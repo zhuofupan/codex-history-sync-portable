@@ -31,7 +31,7 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.2'
+$script:AppVersion = '2026.06.13.3'
 $script:AppAuthor = 'zhuofupan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
@@ -1354,7 +1354,7 @@ function Get-RemoteAppVersion {
     $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $uri = "https://raw.githubusercontent.com/$script:GitHubRepo/main/tools/codex-history-sync-gui.ps1?ts=$stamp"
     $content = Invoke-HttpDownload -Uri $uri
-    $match = [System.Text.RegularExpressions.Regex]::Match($content, "`$script:AppVersion\s*=\s*'([^']+)'")
+    $match = [System.Text.RegularExpressions.Regex]::Match($content, '\$script:AppVersion\s*=\s*''([^'']+)''')
     if (-not $match.Success) {
         $script:LastUpdateCheckNote = '远端版本暂未声明 AppVersion，无法判断它是否更新。'
         return '0.0.0.0'
