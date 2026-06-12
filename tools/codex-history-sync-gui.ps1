@@ -31,7 +31,7 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.4'
+$script:AppVersion = '2026.06.13.5'
 $script:AppAuthor = 'zhuofupan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
@@ -178,7 +178,7 @@ function Resolve-CcSwitchDb {
 
 function Get-CcSwitchHomeHelpText {
     return @"
-请选择 cc-switch 账号目录，也就是包含 cc-switch.db 的目录。
+请选择 cc-switch 节点目录，也就是包含 cc-switch.db 的目录。
 
 常见位置：
 1. cc-switch.exe 所在目录
@@ -188,7 +188,7 @@ function Get-CcSwitchHomeHelpText {
 如果自动加载不到新增账号：
 - 先在 cc-switch 里确认已经新增并保存 Codex 节点
 - 回到本工具点击【刷新】
-- 仍然没有时，点击【增加账号目录】，选择包含 cc-switch.db 的目录
+- 仍然没有时，点击【增加节点目录】，选择包含 cc-switch.db 的目录
 
 找不到时可以用 Everything 搜索 cc-switch.db，然后选择这个文件所在的目录。
 "@
@@ -766,7 +766,7 @@ $clipboardNote
 【历史记录目录】
 $(Get-CodexHomeHelpText)
 
-【cc-switch 账号目录】
+【cc-switch 节点目录】
 $(Get-CcSwitchHomeHelpText)
 
 【配置文件】
@@ -851,7 +851,7 @@ function Set-CcSwitchHomeFromSelection {
 
     $script:CcSwitchDb = $resolved
     $script:CcSwitchSettingsPath = Join-Path (Split-Path -Parent $script:CcSwitchDb) 'settings.json'
-    Append-Log "已加载 cc-switch 账号目录：$(Split-Path -Parent $script:CcSwitchDb)"
+    Append-Log "已加载 cc-switch 节点目录：$(Split-Path -Parent $script:CcSwitchDb)"
     Refresh-Providers
     Save-AppState
     Sync-AppConfigFileWithDetectedInfo -CreateIfMissing
@@ -868,7 +868,7 @@ function Select-CcSwitchHomeFolder {
     }
 
     $selected = Select-FolderPath `
-        -Title '请选择 cc-switch 账号目录；进入包含 cc-switch.db 的文件夹后点击打开' `
+        -Title '请选择 cc-switch 节点目录；进入包含 cc-switch.db 的文件夹后点击打开' `
         -InitialDirectory $initialDirectory
     if (-not [string]::IsNullOrWhiteSpace($selected)) {
         Set-CcSwitchHomeFromSelection $selected
@@ -1015,7 +1015,7 @@ function Get-CurrentAppState {
         includeArchived        = if ($script:IncludeArchivedBox) { [bool]$script:IncludeArchivedBox.Checked } else { $false }
         disableAppsMcpOnFast   = if ($script:DisableCodexAppsBox) { [bool]$script:DisableCodexAppsBox.Checked } else { $true }
         turnCompletePopup      = if ($script:TurnEndedNotifyBox) { [bool]$script:TurnEndedNotifyBox.Checked } else { $true }
-        usePowerShellTerminal  = if ($script:UsePowerShellLaunchBox) { [bool]$script:UsePowerShellLaunchBox.Checked } else { $true }
+        usePowerShellTerminal  = if ($script:UsePowerShellLaunchBox) { [bool]$script:UsePowerShellLaunchBox.Checked } else { $false }
     }
 }
 
@@ -1194,7 +1194,7 @@ function New-AppConfigObject {
         _help                      = [pscustomobject][ordered]@{
             howToUse                  = '这个文件是本机配置。点击软件里的【打开配置】会打开它；保存后软件会自动刷新。JSON 不支持注释，所以说明文字放在 _help 里。'
             codexHome                 = 'Codex 历史记录目录，必须包含 state_5.sqlite 和 sessions 文件夹。常见值：C:\Users\你的用户名\.codex。'
-            ccSwitchHome              = 'cc-switch 账号目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。'
+            ccSwitchHome              = 'cc-switch 节点目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。'
             codexExe                  = 'codex.exe 的完整路径；如果 PATH 已经能找到 codex.exe，可以留空。'
             defaultSourceProvider     = 'Codex 历史记录里的 model_provider 桶，例如 openai、custom、rightcode。可参考 knownCodexHistoryProviders。'
             defaultTargetProvider     = '同步目标 model_provider 桶。'
@@ -1598,7 +1598,7 @@ function ConvertTo-CmdArgument {
 }
 
 function Get-LaunchShell {
-    param([bool]$PreferPowerShell = $true)
+    param([bool]$PreferPowerShell = $false)
 
     $powershell = Get-Command powershell.exe -ErrorAction SilentlyContinue
     $cmd = Get-Command cmd.exe -ErrorAction SilentlyContinue
@@ -1721,16 +1721,21 @@ function Start-CodexInDirectory {
 
     $shell = Get-LaunchShell -PreferPowerShell:$PreferPowerShell
     if ($shell.Name -eq 'PowerShell') {
+        $adminPrelude = @(
+            '$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)',
+            'if ($isAdmin) { $Host.UI.RawUI.WindowTitle = ''管理员 PowerShell - Codex''; Write-Host ''[管理员模式] 当前终端已提权'' -ForegroundColor Green } else { $Host.UI.RawUI.WindowTitle = ''非管理员 PowerShell - Codex''; Write-Host ''[非管理员] 当前终端未提权'' -ForegroundColor Yellow }'
+        ) -join '; '
+        $psCommand = $adminPrelude + '; ' + ('Set-Location -LiteralPath {0}; & {1} {2}' -f
+            (ConvertTo-PowerShellSingleQuotedString $resolvedDirectory),
+            (ConvertTo-PowerShellSingleQuotedString $codexExe),
+            (($codexArgs | ForEach-Object { ConvertTo-PowerShellSingleQuotedString $_ }) -join ' '))
         $psArgs = @(
             '-NoExit',
             '-NoProfile',
             '-ExecutionPolicy',
             'Bypass',
             '-Command',
-            ('Set-Location -LiteralPath {0}; & {1} {2}' -f
-                (ConvertTo-PowerShellSingleQuotedString $Directory),
-                (ConvertTo-PowerShellSingleQuotedString $codexExe),
-                (($codexArgs | ForEach-Object { ConvertTo-PowerShellSingleQuotedString $_ }) -join ' '))
+            $psCommand
         )
         Start-Process -FilePath $shell.Path `
             -WorkingDirectory $resolvedDirectory `
@@ -1740,7 +1745,9 @@ function Start-CodexInDirectory {
     }
 
     $commandParts = @((ConvertTo-CmdArgument $codexExe)) + @($codexArgs | ForEach-Object { ConvertTo-CmdArgument $_ })
-    $command = ($commandParts -join ' ').Trim()
+    $codexCommand = ($commandParts -join ' ').Trim()
+    $adminPrelude = 'net session >nul 2>&1 && (title 管理员 CMD - Codex && echo [管理员模式] 当前终端已提权) || (title 非管理员 CMD - Codex && echo [非管理员] 当前终端未提权)'
+    $command = $adminPrelude + ' && cd /d ' + (ConvertTo-CmdArgument $resolvedDirectory) + ' && ' + $codexCommand
     Start-Process -FilePath $shell.Path `
         -WorkingDirectory $resolvedDirectory `
         -ArgumentList @('/k', $command) `
@@ -1797,7 +1804,7 @@ function Get-CcSwitchProviderById {
     $safe = Quote-Sql $ProviderId
     $rows = Invoke-CcSwitchSqlJson "select id,name,settings_config from providers where app_type='codex' and id=$safe limit 1;"
     if ($rows.Count -eq 0) {
-        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【增加账号目录】选择包含 cc-switch.db 的目录，然后刷新。"
+        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【增加节点目录】选择包含 cc-switch.db 的目录，然后刷新。"
     }
     return $rows[0]
 }
@@ -1929,6 +1936,252 @@ function ConvertFrom-TomlNotifyString {
     return $text
 }
 
+function Add-CodexConfigFixMessage {
+    param([AllowNull()][string]$Message)
+
+    if ([string]::IsNullOrWhiteSpace($Message)) { return }
+    if ([string]::IsNullOrWhiteSpace($script:LastCodexConfigFix)) {
+        $script:LastCodexConfigFix = $Message
+    }
+    elseif ($script:LastCodexConfigFix -notmatch [regex]::Escape($Message)) {
+        $script:LastCodexConfigFix = $script:LastCodexConfigFix + [Environment]::NewLine + $Message
+    }
+}
+
+function ConvertTo-TomlSafeString {
+    param([AllowNull()][string]$Value)
+
+    if ($null -eq $Value) { $Value = '' }
+    if ($Value -notmatch "'") {
+        return ConvertTo-TomlLiteralString $Value
+    }
+    return ConvertTo-TomlBasicString $Value
+}
+
+function Get-TomlSectionMatch {
+    param(
+        [AllowNull()][string]$Config,
+        [Parameter(Mandatory)][string]$SectionName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Config)) { return $null }
+    $pattern = '(?ms)^\s*\[' + [regex]::Escape($SectionName) + '\]\s*\r?\n.*?(?=^\s*\[|\z)'
+    $match = [System.Text.RegularExpressions.Regex]::Match($Config, $pattern)
+    if ($match.Success) { return $match }
+    return $null
+}
+
+function Get-TomlSectionStringValue {
+    param(
+        [AllowNull()][string]$Config,
+        [Parameter(Mandatory)][string]$SectionName,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $match = Get-TomlSectionMatch -Config $Config -SectionName $SectionName
+    if (-not $match) { return '' }
+    $pattern = '(?m)^\s*' + [regex]::Escape($Name) + '\s*=\s*(?<value>"(?:\\.|[^"\\])*"|''[^'']*''|[^\r\n#]+)'
+    $valueMatch = [System.Text.RegularExpressions.Regex]::Match($match.Value, $pattern)
+    if (-not $valueMatch.Success) { return '' }
+    return (ConvertFrom-TomlNotifyString $valueMatch.Groups['value'].Value.Trim())
+}
+
+function Set-TomlSectionStringValue {
+    param(
+        [AllowNull()][string]$Config,
+        [Parameter(Mandatory)][string]$SectionName,
+        [Parameter(Mandatory)][string]$Name,
+        [AllowNull()][string]$Value
+    )
+
+    if ($null -eq $Config) { $Config = '' }
+    $tomlValue = ConvertTo-TomlSafeString $Value
+    $line = "$Name = $tomlValue"
+    $match = Get-TomlSectionMatch -Config $Config -SectionName $SectionName
+    if (-not $match) {
+        if (-not $Config.EndsWith([Environment]::NewLine)) {
+            $Config += [Environment]::NewLine
+        }
+        return $Config + [Environment]::NewLine + "[$SectionName]" + [Environment]::NewLine + $line + [Environment]::NewLine
+    }
+
+    $sectionText = $match.Value
+    $linePattern = '(?m)^\s*' + [regex]::Escape($Name) + '\s*=.*$'
+    if ([System.Text.RegularExpressions.Regex]::IsMatch($sectionText, $linePattern)) {
+        $sectionText = [System.Text.RegularExpressions.Regex]::Replace($sectionText, $linePattern, $line, 1)
+    }
+    else {
+        if (-not $sectionText.EndsWith([Environment]::NewLine)) {
+            $sectionText += [Environment]::NewLine
+        }
+        $sectionText += $line + [Environment]::NewLine
+    }
+
+    return $Config.Remove($match.Index, $match.Length).Insert($match.Index, $sectionText)
+}
+
+function Remove-TomlSection {
+    param(
+        [AllowNull()][string]$Config,
+        [Parameter(Mandatory)][string]$SectionName
+    )
+
+    $match = Get-TomlSectionMatch -Config $Config -SectionName $SectionName
+    if (-not $match) { return $Config }
+    return $Config.Remove($match.Index, $match.Length).TrimEnd() + [Environment]::NewLine
+}
+
+function Test-PathListHasExistingItem {
+    param([AllowNull()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    foreach ($part in ($Value -split ';')) {
+        $path = $part.Trim()
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if (Test-Path -LiteralPath $path) { return $true }
+    }
+    return $false
+}
+
+function Get-CodexDesktopRuntimeFile {
+    param([Parameter(Mandatory)][string]$FileName)
+
+    $root = Join-OptionalPath $env:LOCALAPPDATA 'OpenAI\Codex'
+    if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path -LiteralPath $root -PathType Container)) {
+        return ''
+    }
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+    foreach ($path in @(
+            (Join-Path $root "bin\$FileName")
+        )) {
+        if (-not [string]::IsNullOrWhiteSpace($path) -and -not $candidates.Contains($path)) {
+            $candidates.Add($path)
+        }
+    }
+
+    foreach ($parent in @(
+            (Join-Path $root 'runtimes\cua_node'),
+            (Join-Path $root 'bin')
+        )) {
+        if (-not (Test-Path -LiteralPath $parent -PathType Container)) { continue }
+        try {
+            foreach ($hit in @(Get-ChildItem -LiteralPath $parent -Recurse -Filter $FileName -File -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTimeUtc -Descending)) {
+                if (-not $candidates.Contains($hit.FullName)) {
+                    $candidates.Add($hit.FullName)
+                }
+            }
+        }
+        catch {
+            continue
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+    return ''
+}
+
+function Get-CodexDesktopNodeModulesPath {
+    param([AllowNull()][string]$RelatedExecutable)
+
+    $paths = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($RelatedExecutable)) {
+        $paths.Add((Join-Path (Split-Path -Parent $RelatedExecutable) 'node_modules'))
+    }
+    $runtimeRoot = Join-OptionalPath $env:LOCALAPPDATA 'OpenAI\Codex\runtimes\cua_node'
+    if (-not [string]::IsNullOrWhiteSpace($runtimeRoot)) {
+        $paths.Add($runtimeRoot)
+    }
+
+    foreach ($path in $paths) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if (Test-Path -LiteralPath $path -PathType Container) {
+            if ((Split-Path -Leaf $path) -ieq 'cua_node') {
+                try {
+                    $hit = Get-ChildItem -LiteralPath $path -Directory -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTimeUtc -Descending |
+                        ForEach-Object { Join-Path $_.FullName 'bin\node_modules' } |
+                        Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
+                        Select-Object -First 1
+                    if ($hit) { return (Resolve-Path -LiteralPath $hit).Path }
+                }
+                catch {
+                    continue
+                }
+            }
+            else {
+                return (Resolve-Path -LiteralPath $path).Path
+            }
+        }
+    }
+    return ''
+}
+
+function Repair-NodeReplMcpConfig {
+    param([AllowNull()][string]$Config)
+
+    if ([string]::IsNullOrWhiteSpace($Config)) { return $Config }
+    if (-not (Get-TomlSectionMatch -Config $Config -SectionName 'mcp_servers.node_repl')) {
+        return $Config
+    }
+
+    $configText = $Config
+    $currentCommand = Get-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl' -Name 'command'
+    $commandExists = -not [string]::IsNullOrWhiteSpace($currentCommand) -and (Test-Path -LiteralPath $currentCommand -PathType Leaf)
+    $nodeReplPath = if ($commandExists) { (Resolve-Path -LiteralPath $currentCommand).Path } else { Get-CodexDesktopRuntimeFile 'node_repl.exe' }
+
+    if ([string]::IsNullOrWhiteSpace($nodeReplPath)) {
+        $configText = Remove-TomlSection -Config $configText -SectionName 'mcp_servers.node_repl.env'
+        $configText = Remove-TomlSection -Config $configText -SectionName 'mcp_servers.node_repl'
+        Add-CodexConfigFixMessage '未找到可用 node_repl.exe，已移除失效的 node_repl MCP 配置，避免 Codex 启动时报 MCP 路径错误。'
+        return $configText
+    }
+
+    if (-not $commandExists -or -not [string]::Equals($currentCommand, $nodeReplPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $configText = Set-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl' -Name 'command' -Value $nodeReplPath
+        Add-CodexConfigFixMessage "已修复 node_repl MCP 启动路径：$nodeReplPath"
+    }
+
+    $currentNodePath = Get-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl.env' -Name 'NODE_REPL_NODE_PATH'
+    if (-not (Test-PathListHasExistingItem $currentNodePath)) {
+        $nodePath = Get-CodexDesktopRuntimeFile 'node.exe'
+        if (-not [string]::IsNullOrWhiteSpace($nodePath)) {
+            $configText = Set-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl.env' -Name 'NODE_REPL_NODE_PATH' -Value $nodePath
+            Add-CodexConfigFixMessage "已修复 node_repl Node 路径：$nodePath"
+        }
+    }
+
+    $currentNodeModules = Get-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl.env' -Name 'NODE_REPL_NODE_MODULE_DIRS'
+    if (-not (Test-PathListHasExistingItem $currentNodeModules)) {
+        $nodeModules = Get-CodexDesktopNodeModulesPath -RelatedExecutable $nodeReplPath
+        if (-not [string]::IsNullOrWhiteSpace($nodeModules)) {
+            $configText = Set-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl.env' -Name 'NODE_REPL_NODE_MODULE_DIRS' -Value $nodeModules
+            Add-CodexConfigFixMessage "已修复 node_repl node_modules 路径：$nodeModules"
+        }
+    }
+
+    $currentCodexCli = Get-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl.env' -Name 'CODEX_CLI_PATH'
+    if (-not (Test-PathListHasExistingItem $currentCodexCli)) {
+        try {
+            $codexCli = Get-CodexExecutable
+            if (-not [string]::IsNullOrWhiteSpace($codexCli)) {
+                $configText = Set-TomlSectionStringValue -Config $configText -SectionName 'mcp_servers.node_repl.env' -Name 'CODEX_CLI_PATH' -Value $codexCli
+                Add-CodexConfigFixMessage "已修复 node_repl Codex CLI 路径：$codexCli"
+            }
+        }
+        catch {
+            Add-CodexConfigFixMessage "node_repl MCP 的 CODEX_CLI_PATH 已失效，但暂未找到 codex.exe；如仍报错，请在【打开配置】里填写 codexExe。"
+        }
+    }
+
+    return $configText
+}
+
 function Get-CodexNotifyCommand {
     param([AllowNull()][string]$Config)
 
@@ -1993,6 +2246,9 @@ function Set-CodexTurnEndedNotify {
             $script:NotifierPath
         )
     }
+    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) {
+        $notifyArgs += @('-CodexHome', $CodexHome)
+    }
     if (-not [string]::IsNullOrWhiteSpace($forwardBase64)) {
         $notifyArgs += @('-ForwardBase64', $forwardBase64)
     }
@@ -2006,13 +2262,7 @@ function Set-CodexTurnEndedNotify {
         $configText = $notifyLine + [Environment]::NewLine + $Config
     }
 
-    $message = '已启用 Codex 会话结束右下角置顶弹窗提醒。'
-    if ([string]::IsNullOrWhiteSpace($script:LastCodexConfigFix)) {
-        $script:LastCodexConfigFix = $message
-    }
-    elseif ($script:LastCodexConfigFix -notmatch [regex]::Escape($message)) {
-        $script:LastCodexConfigFix = $script:LastCodexConfigFix + [Environment]::NewLine + $message
-    }
+    Add-CodexConfigFixMessage '已启用 Codex 会话结束右下角置顶弹窗提醒。'
     return $configText
 }
 
@@ -2025,6 +2275,7 @@ function Apply-TurnEndedNotifyToCurrentConfig {
 
     $script:LastCodexConfigFix = $null
     $configText = Get-Content -LiteralPath $configPath -Raw
+    $configText = Repair-NodeReplMcpConfig $configText
     $configText = Set-CodexTurnEndedNotify $configText
     [System.IO.File]::WriteAllText($configPath, $configText, $script:Utf8NoBom)
     if (-not [string]::IsNullOrWhiteSpace($script:LastCodexConfigFix)) {
@@ -2045,6 +2296,8 @@ function Show-TestTurnEndedNotify {
         (Test-Path -LiteralPath $script:NotifierLauncherPath)) {
         Start-Process -FilePath wscript.exe -ArgumentList @(
             $script:NotifierLauncherPath,
+            '-CodexHome',
+            $CodexHome,
             '-MessageBase64',
             $messageBase64,
             '-Seconds',
@@ -2061,6 +2314,8 @@ function Show-TestTurnEndedNotify {
             'Hidden',
             '-File',
             $script:NotifierPath,
+            '-CodexHome',
+            $CodexHome,
             '-MessageBase64',
             $messageBase64,
             '-Seconds',
@@ -2165,6 +2420,7 @@ function Normalize-CodexConfig {
     }
 
     $configText = [System.Text.RegularExpressions.Regex]::Replace($configText, $pattern, $evaluator)
+    $configText = Repair-NodeReplMcpConfig $configText
 
     if ($DisableCodexAppsOnFast -and ((Get-CodexServiceTier $configText) -eq 'fast')) {
         $configText = Disable-CodexAppsPlugins $configText
@@ -2304,7 +2560,7 @@ function Invoke-LaunchForProvider {
     $providerLabel = [string]$Combo.SelectedItem
     $providerId = Resolve-CcSwitchProviderId $providerLabel
     if ([string]::IsNullOrWhiteSpace($providerId)) {
-        throw '请先选择 cc switch节点。若下拉菜单为空，请点击【打开配置】填写 ccSwitchHome 后保存，或点击【增加账号目录】选择包含 cc-switch.db 的目录。'
+        throw '请先选择 cc switch节点。若下拉菜单为空，请点击【打开配置】填写 ccSwitchHome 后保存，或点击【增加节点目录】选择包含 cc-switch.db 的目录。'
     }
     $resumeSelection = Get-LaunchResumeSelection
     $resumeId = $null
@@ -2621,8 +2877,8 @@ function Refresh-Threads {
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = 'Codex 历史记录同步'
 $script:Form.StartPosition = 'CenterScreen'
-$script:Form.Size = New-Object System.Drawing.Size(1200, 760)
-$script:Form.MinimumSize = New-Object System.Drawing.Size(1100, 640)
+$script:Form.Size = New-Object System.Drawing.Size(1300, 760)
+$script:Form.MinimumSize = New-Object System.Drawing.Size(1180, 640)
 $script:Form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $script:Form.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
 
@@ -2682,11 +2938,11 @@ $script:Form.Controls.Add($syncButton)
 $script:Form.Controls.Add($mirrorButton)
 
 $script:Grid = New-Object System.Windows.Forms.DataGridView
-$openCodexFolderButton = New-Button '打开.codex 目录' 848 10 122
-$openConfigButton = New-Button '打开配置' 980 10 76
-$helpButton = New-Button '帮助' 1064 10 54
-$updateButton = New-Button '检查更新' 1126 10 82
-$openRecordFolderButton = New-Button '打开记录目录' 854 47 120
+$openCodexFolderButton = New-Button '打开.codex目录' 1076 83 112
+$openConfigButton = New-Button '打开配置' 1196 83 76
+$helpButton = New-Button '帮助' 848 10 54
+$updateButton = New-Button '检查更新' 910 10 82
+$openRecordFolderButton = New-Button '打开记录目录' 852 83 104
 $script:Form.Controls.Add($openCodexFolderButton)
 $script:Form.Controls.Add($openConfigButton)
 $script:Form.Controls.Add($helpButton)
@@ -2705,31 +2961,31 @@ $script:Form.Controls.Add($openCodexButton)
 $script:UsePowerShellLaunchBox = New-Object System.Windows.Forms.CheckBox
 $script:UsePowerShellLaunchBox.Text = '用 PowerShell'
 $script:UsePowerShellLaunchBox.Location = New-Object System.Drawing.Point(414, 87)
-$script:UsePowerShellLaunchBox.Size = New-Object System.Drawing.Size(112, 22)
-$script:UsePowerShellLaunchBox.Checked = $true
+$script:UsePowerShellLaunchBox.Size = New-Object System.Drawing.Size(96, 22)
+$script:UsePowerShellLaunchBox.Checked = $false
 $script:Form.Controls.Add($script:UsePowerShellLaunchBox)
 
 $script:DisableCodexAppsBox = New-Object System.Windows.Forms.CheckBox
-$script:DisableCodexAppsBox.Text = 'fast 关闭 Apps MCP'
-$script:DisableCodexAppsBox.Location = New-Object System.Drawing.Point(532, 87)
-$script:DisableCodexAppsBox.Size = New-Object System.Drawing.Size(142, 22)
+$script:DisableCodexAppsBox.Text = 'fast 禁用 Apps 插件'
+$script:DisableCodexAppsBox.Location = New-Object System.Drawing.Point(516, 87)
+$script:DisableCodexAppsBox.Size = New-Object System.Drawing.Size(138, 22)
 $script:DisableCodexAppsBox.Checked = $true
 $script:Form.Controls.Add($script:DisableCodexAppsBox)
 
 $script:TurnEndedNotifyBox = New-Object System.Windows.Forms.CheckBox
 $script:TurnEndedNotifyBox.Text = '每次完成弹窗'
-$script:TurnEndedNotifyBox.Location = New-Object System.Drawing.Point(680, 87)
-$script:TurnEndedNotifyBox.Size = New-Object System.Drawing.Size(116, 22)
+$script:TurnEndedNotifyBox.Location = New-Object System.Drawing.Point(660, 87)
+$script:TurnEndedNotifyBox.Size = New-Object System.Drawing.Size(108, 22)
 $script:TurnEndedNotifyBox.Checked = $true
 $script:Form.Controls.Add($script:TurnEndedNotifyBox)
 
-$testNotifyButton = New-Button '测试弹窗' 802 83 82
-$selectCcSwitchHomeButton = New-Button '增加账号目录' 892 83 112
+$testNotifyButton = New-Button '测试弹窗' 772 83 72
+$selectCcSwitchHomeButton = New-Button '增加节点目录' 964 83 104
 $script:Form.Controls.Add($testNotifyButton)
 $script:Form.Controls.Add($selectCcSwitchHomeButton)
 
 $script:Grid.Location = New-Object System.Drawing.Point(12, 122)
-$script:Grid.Size = New-Object System.Drawing.Size(1150, 374)
+$script:Grid.Size = New-Object System.Drawing.Size(1250, 374)
 $script:Grid.Anchor = 'Top,Left,Right,Bottom'
 $script:Grid.ReadOnly = $false
 $script:Grid.MultiSelect = $false
@@ -2769,7 +3025,7 @@ $script:Form.Controls.Add($script:Grid)
 
 $script:OutputBox = New-Object System.Windows.Forms.TextBox
 $script:OutputBox.Location = New-Object System.Drawing.Point(12, 506)
-$script:OutputBox.Size = New-Object System.Drawing.Size(1150, 170)
+$script:OutputBox.Size = New-Object System.Drawing.Size(1250, 170)
 $script:OutputBox.Anchor = 'Left,Right,Bottom'
 $script:OutputBox.Multiline = $true
 $script:OutputBox.ReadOnly = $true
@@ -2779,7 +3035,7 @@ $script:Form.Controls.Add($script:OutputBox)
 
 $script:StatusLabel = New-Object System.Windows.Forms.Label
 $script:StatusLabel.Location = New-Object System.Drawing.Point(12, 686)
-$script:StatusLabel.Size = New-Object System.Drawing.Size(1150, 24)
+$script:StatusLabel.Size = New-Object System.Drawing.Size(1250, 24)
 $script:StatusLabel.Anchor = 'Left,Right,Bottom'
 $script:StatusLabel.Text = '就绪'
 $script:Form.Controls.Add($script:StatusLabel)
@@ -3041,7 +3297,7 @@ else {
     Append-Log ("尚未加载 Codex 记录目录。请点击 ""增加记录目录""。" + "`r`n`r`n" + (Get-CodexHomeHelpText))
 }
 if ([string]::IsNullOrWhiteSpace($script:CcSwitchDb)) {
-    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""增加账号目录""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
+    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""增加节点目录""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
 }
 else {
     Append-Log "cc-switch 数据库：$script:CcSwitchDb"

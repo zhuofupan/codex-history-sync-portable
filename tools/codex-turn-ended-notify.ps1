@@ -5,6 +5,7 @@ param(
     [string]$MessageBase64,
     [int]$Seconds = 12,
     [string]$ForwardBase64,
+    [string]$CodexHome,
     [switch]$SelfTest,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$RemainingArgs
@@ -125,6 +126,214 @@ function Get-NotifyMessageFromArgs {
     return ''
 }
 
+function Join-OptionalPath {
+    param(
+        [AllowNull()][string]$Base,
+        [Parameter(Mandatory)][string]$Child
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Base)) { return $null }
+    try { return (Join-Path $Base $Child) } catch { return $null }
+}
+
+function Resolve-CodexHome {
+    param([AllowNull()][string]$Requested)
+
+    foreach ($path in @(
+            $Requested,
+            $env:CODEX_HOME,
+            (Join-OptionalPath $env:USERPROFILE '.codex'),
+            (Join-OptionalPath $env:HOME '.codex')
+        )) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if (Test-Path -LiteralPath (Join-Path $path 'sessions') -PathType Container) {
+            return (Resolve-Path -LiteralPath $path).Path
+        }
+    }
+    return ''
+}
+
+function Get-RolloutMessageText {
+    param([AllowNull()]$Payload)
+
+    if ($null -eq $Payload) { return '' }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Payload.message)) {
+        return [string]$Payload.message
+    }
+
+    $texts = New-Object System.Collections.Generic.List[string]
+    foreach ($part in @($Payload.content)) {
+        if ($null -eq $part) { continue }
+        if (-not [string]::IsNullOrWhiteSpace([string]$part.text)) {
+            $texts.Add([string]$part.text)
+        }
+    }
+    return ($texts.ToArray() -join "`n")
+}
+
+function Test-UserTaskText {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $clean = $Text.Trim()
+    if ($clean.StartsWith('<environment_context>')) { return $false }
+    if ($clean.StartsWith('<developer_context>')) { return $false }
+    if ($clean -match '^\s*#\s*Files mentioned by the user:') { return $false }
+    return $true
+}
+
+function New-RolloutContext {
+    return [pscustomobject]@{
+        Provider     = ''
+        Cwd          = ''
+        ThreadId     = ''
+        LastUserTask = ''
+    }
+}
+
+function Update-RolloutContext {
+    param(
+        [Parameter(Mandatory)]$Context,
+        [Parameter(Mandatory)]$Object
+    )
+
+    if ([string]$Object.type -eq 'session_meta') {
+        if (-not [string]::IsNullOrWhiteSpace([string]$Object.payload.model_provider)) {
+            $Context.Provider = [string]$Object.payload.model_provider
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$Object.payload.cwd)) {
+            $Context.Cwd = [string]$Object.payload.cwd
+        }
+        foreach ($name in @('id', 'session_id', 'thread_id', 'conversation_id')) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$Object.payload.$name)) {
+                $Context.ThreadId = [string]$Object.payload.$name
+                break
+            }
+        }
+        return
+    }
+
+    if ([string]$Object.type -eq 'turn_context' -and
+        -not [string]::IsNullOrWhiteSpace([string]$Object.cwd)) {
+        $Context.Cwd = [string]$Object.cwd
+        return
+    }
+
+    $payloadType = [string]$Object.payload.type
+    $role = [string]$Object.payload.role
+    $isUserMessage = (
+        ([string]$Object.type -eq 'response_item' -and $payloadType -eq 'message' -and $role -eq 'user') -or
+        ([string]$Object.type -eq 'event_msg' -and $payloadType -eq 'user_message')
+    )
+    if (-not $isUserMessage) { return }
+
+    $text = Get-RolloutMessageText $Object.payload
+    if (Test-UserTaskText $text) {
+        $Context.LastUserTask = $text
+    }
+}
+
+function Get-RolloutContextFromFile {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $context = New-RolloutContext
+    try {
+        $lines = @()
+        $lines += @(Get-Content -LiteralPath $Path -TotalCount 80 -ErrorAction SilentlyContinue)
+        $lines += @(Get-Content -LiteralPath $Path -Tail 260 -ErrorAction SilentlyContinue)
+        foreach ($line in $lines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $obj = $line | ConvertFrom-Json
+            }
+            catch {
+                continue
+            }
+            Update-RolloutContext -Context $context -Object $obj
+        }
+    }
+    catch {
+        return $context
+    }
+    return $context
+}
+
+function Test-RolloutContextHasUsefulInfo {
+    param([AllowNull()]$Context)
+
+    if ($null -eq $Context) { return $false }
+    return (-not [string]::IsNullOrWhiteSpace([string]$Context.Provider)) -or
+        (-not [string]::IsNullOrWhiteSpace([string]$Context.Cwd)) -or
+        (-not [string]::IsNullOrWhiteSpace([string]$Context.ThreadId)) -or
+        (-not [string]::IsNullOrWhiteSpace([string]$Context.LastUserTask))
+}
+
+function Get-NotifyMessageFromRolloutContext {
+    param([AllowNull()]$Context)
+
+    if (-not (Test-RolloutContextHasUsefulInfo $Context)) { return '' }
+
+    $unknownAccount = ConvertFrom-Utf8Base64 '5pyq55+l6LSm5Y+3'
+    $unknownCwd = ConvertFrom-Utf8Base64 '5pyq55+l55uu5b2V'
+    $currentThread = ConvertFrom-Utf8Base64 '5b2T5YmN5Lya6K+d'
+    $currentTaskDone = ConvertFrom-Utf8Base64 '5b2T5YmN5Lu75Yqh5bey5a6M5oiQ'
+    $accountLabel = ConvertFrom-Utf8Base64 '6LSm5Y+377ya'
+    $threadLabel = ConvertFrom-Utf8Base64 '6IGK5aSp77ya'
+    $taskLabel = ConvertFrom-Utf8Base64 '5Lu75Yqh77ya'
+
+    $provider = Shorten-Text ([string]$Context.Provider) 18
+    if ([string]::IsNullOrWhiteSpace($provider)) { $provider = $unknownAccount }
+
+    $cwd = [string]$Context.Cwd
+    $cwdLabel = if (-not [string]::IsNullOrWhiteSpace($cwd)) { Split-Path -Leaf $cwd } else { $unknownCwd }
+    if ([string]::IsNullOrWhiteSpace($cwdLabel)) { $cwdLabel = Shorten-Text $cwd 24 }
+
+    $thread = [string]$Context.ThreadId
+    if ($thread.Length -gt 8) { $thread = $thread.Substring(0, 8) }
+    if ([string]::IsNullOrWhiteSpace($thread)) { $thread = $currentThread }
+
+    $task = Shorten-Text ([string]$Context.LastUserTask) 52
+    if ([string]::IsNullOrWhiteSpace($task)) { $task = $currentTaskDone }
+
+    return "$accountLabel$provider | $(Shorten-Text $cwdLabel 24)`r`n$threadLabel$(Shorten-Text $thread 18)`r`n$taskLabel$task"
+}
+
+function Get-NotifyMessageFromLatestRollout {
+    param([AllowNull()][string]$RequestedCodexHome)
+
+    $home = Resolve-CodexHome $RequestedCodexHome
+    if ([string]::IsNullOrWhiteSpace($home)) { return '' }
+
+    $sessionsDir = Join-Path $home 'sessions'
+    if (-not (Test-Path -LiteralPath $sessionsDir -PathType Container)) { return '' }
+
+    $fallbackContext = $null
+    try {
+        $files = @(Get-ChildItem -LiteralPath $sessionsDir -Recurse -Filter 'rollout-*.jsonl' -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 6)
+        foreach ($file in $files) {
+            $context = Get-RolloutContextFromFile ([string]$file.FullName)
+            if (-not $fallbackContext) { $fallbackContext = $context }
+            if (Test-RolloutContextHasUsefulInfo $context) {
+                return (Get-NotifyMessageFromRolloutContext $context)
+            }
+        }
+    }
+    catch {
+        return ''
+    }
+
+    return (Get-NotifyMessageFromRolloutContext $fallbackContext)
+}
+
+function Test-NotifyMessageNeedsRolloutContext {
+    param([AllowNull()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
+    return ($Value -match '未知账号|未知目录|当前会话|当前任务已完成|Codex 已完成当前会话|turn-ended')
+}
+
 if ([string]::IsNullOrWhiteSpace($Title)) {
     $Title = ConvertFrom-Utf8Base64 'Q29kZXgg5Lya6K+d5bey57uT5p2f'
 }
@@ -135,6 +344,12 @@ elseif ($RemainingArgs -and $RemainingArgs.Count -gt 0) {
     $argMessage = Get-NotifyMessageFromArgs $RemainingArgs
     if (-not [string]::IsNullOrWhiteSpace($argMessage)) {
         $Message = $argMessage
+    }
+}
+if (Test-NotifyMessageNeedsRolloutContext $Message) {
+    $rolloutMessage = Get-NotifyMessageFromLatestRollout -RequestedCodexHome $CodexHome
+    if (-not [string]::IsNullOrWhiteSpace($rolloutMessage)) {
+        $Message = $rolloutMessage
     }
 }
 if ([string]::IsNullOrWhiteSpace($Message)) {
@@ -265,7 +480,7 @@ $iconPanel.Controls.Add($iconLabel)
 
 $titleLabel = New-Object System.Windows.Forms.Label
 $titleLabel.Text = $Title
-$titleLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 11, [System.Drawing.FontStyle]::Bold)
+$titleLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 12, [System.Drawing.FontStyle]::Bold)
 $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(25, 31, 40)
 $titleLabel.Location = New-Object System.Drawing.Point(78, 22)
 $titleLabel.Size = New-Object System.Drawing.Size(($width - 118), 28)
@@ -274,10 +489,10 @@ $form.Controls.Add($titleLabel)
 
 $messageLabel = New-Object System.Windows.Forms.Label
 $messageLabel.Text = $Message
-$messageLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
+$messageLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
 $messageLabel.ForeColor = [System.Drawing.Color]::FromArgb(68, 76, 88)
 $messageLabel.Location = New-Object System.Drawing.Point(80, 50)
-$messageLabel.Size = New-Object System.Drawing.Size(($width - 104), 62)
+$messageLabel.Size = New-Object System.Drawing.Size(($width - 104), 64)
 $messageLabel.TextAlign = 'TopLeft'
 $form.Controls.Add($messageLabel)
 
@@ -301,6 +516,7 @@ $closeButton.FlatStyle = 'Flat'
 $closeButton.FlatAppearance.BorderSize = 0
 $closeButton.BackColor = [System.Drawing.Color]::FromArgb(34, 111, 245)
 $closeButton.ForeColor = [System.Drawing.Color]::White
+$closeButton.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9.5)
 $closeButton.Add_Click({ $form.Close() })
 $form.Controls.Add($closeButton)
 
@@ -347,6 +563,8 @@ $soundTimer.Add_Tick({
 $form.Add_Shown({
         $region = [CodexNotifyNative]::CreateRoundRectRgn(0, 0, $form.Width + 1, $form.Height + 1, 14, 14)
         [void][CodexNotifyNative]::SetWindowRgn($form.Handle, $region, $true)
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
         $form.TopMost = $true
         [void][CodexNotifyNative]::ShowWindow($form.Handle, [CodexNotifyNative]::SW_RESTORE)
         [void][CodexNotifyNative]::ShowWindow($form.Handle, [CodexNotifyNative]::SW_SHOWNORMAL)

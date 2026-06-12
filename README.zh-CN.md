@@ -91,12 +91,13 @@ GUI 里的主要控件如下：
 | `同步全部` | 同步当前源账号下列出的记录 |
 | `双向同步` | 在两个 provider 桶之间互相同步 |
 | `cc switch节点` | `从终端启动` 时使用哪个 cc-switch Codex 节点 |
-| `从终端启动` | 以管理员身份打开终端；不勾选记录时新建对话；只勾选一条记录时自动恢复该会话；多选会提示只保留一条 |
+| `从终端启动` | 以管理员身份打开终端；终端第一行会显示 `[管理员模式]` 或 `[非管理员]`；不勾选记录时新建对话；只勾选一条记录时自动恢复该会话；多选会提示只保留一条 |
 | `用 PowerShell` | 勾选时优先用 PowerShell 启动；取消勾选时优先用 CMD 启动；找不到首选终端时会自动退回另一种 |
 | `打开配置` | 打开根目录 `codex-history-sync-config.json`；首次会自动生成，保存后 GUI 自动刷新 |
 | `帮助` | 显示记录目录、账号目录、启动、更新等说明，并复制 Everything 搜索关键词 |
 | `检查更新` | 从 GitHub main 分支检查版本，发现新版后可一键热更新 |
 | `增加记录目录` | 手动选择 `.codex` 历史目录 |
+| `增加节点目录` | 手动选择包含 `cc-switch.db` 的 cc-switch 节点目录 |
 
 如果你误选了 `sessions` 或它下面的子目录，工具会自动向上查找包含 `state_5.sqlite` 的父目录。
 
@@ -184,7 +185,7 @@ codex-history-sync.cmd mirror -Providers openai,custom
 4. `%LOCALAPPDATA%\cc-switch\cc-switch.db`。
 5. `%APPDATA%\cc-switch\cc-switch.db`。
 
-如果新增节点后没有显示，先点 `刷新`。仍然没有时，点 `增加账号目录`，选择包含 `cc-switch.db` 的目录。
+如果新增节点后没有显示，先点 `刷新`。仍然没有时，点 `增加节点目录`，选择包含 `cc-switch.db` 的目录。
 
 注意：`Codex源账号` 和 `Codex目标账号` 表示 Codex 历史记录里的 `model_provider` 桶；`cc switch节点` 表示启动 Codex 时使用的 cc-switch 节点。两者不是同一个概念。
 
@@ -197,7 +198,7 @@ GUI 里的 `每次完成弹窗` 默认用于本地提醒。启用后，工具会
 - 监控最近的 `rollout-*.jsonl` 文件；
 - 发现 `task_complete` 事件后弹出置顶提示并播放提示音；
 - 弹窗会尽量显示账号、完成的聊天和最近一条用户任务摘要。
-- 桌面版 Codex 直接调用 `notify` 时，工具也会尝试解析 Codex 传入的事件参数并显示摘要。
+- 桌面版 Codex 直接调用 `notify` 时，工具也会尝试解析 Codex 传入的事件参数；参数不足时会从最近的本地 rollout 记录补账号、会话和任务摘要。
 
 这个功能只读取本机 session 文件，不会把通知内容发送到外部服务。
 
@@ -264,7 +265,9 @@ GUI 里的 `每次完成弹窗` 默认用于本地提醒。启用后，工具会
 
 如果同步时报 rollout 文件正在被写入，暂停当前 Codex 对话或关闭 Codex 后再试。复制逻辑已经内置短暂重试。
 
-如果看不到 cc-switch 节点，点击 `增加账号目录`，选择包含 `cc-switch.db` 的目录。
+如果启动 Codex 时看到 `MCP client for node_repl failed to start`，通常是 Codex Desktop 更新后旧运行时路径失效。通过 GUI 切换节点或启用完成弹窗时，工具会自动修复 `config.toml` 里的 `node_repl.exe`、`node.exe`、`node_modules` 和 `codex.exe` 路径。
+
+如果看不到 cc-switch 节点，点击 `增加节点目录`，选择包含 `cc-switch.db` 的目录。
 
 ## 开发说明
 

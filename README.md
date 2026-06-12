@@ -94,12 +94,13 @@ The GUI opens with these main controls:
 | `同步全部` | Copy all listed source rows to the target provider |
 | `双向同步` | Sync both directions between the selected providers |
 | `cc switch节点` | cc-switch Codex node used by `从终端启动` |
-| `从终端启动` | Open an elevated terminal; start a new chat when no row is checked; resume the one checked thread; reject multiple checked rows |
+| `从终端启动` | Open an elevated terminal; the first terminal line shows `[管理员模式]` or `[非管理员]`; start a new chat when no row is checked; resume the one checked thread; reject multiple checked rows |
 | `用 PowerShell` | Prefer PowerShell when checked; prefer CMD when unchecked; fall back automatically if the preferred terminal is unavailable |
 | `打开配置` | Open root `codex-history-sync-config.json`; the GUI creates it if missing and reloads it after saves |
 | `帮助` | Show path/account/start/update guidance and copy Everything search terms |
 | `检查更新` | Check GitHub main for a newer version and apply a one-click hot update |
 | `增加记录目录` | Manually load a `.codex` directory |
+| `增加节点目录` | Manually load the cc-switch node directory containing `cc-switch.db` |
 
 ## CLI Usage
 
@@ -185,7 +186,7 @@ The tool searches for `cc-switch.db` in these places:
 4. `%LOCALAPPDATA%\cc-switch\cc-switch.db`.
 5. `%APPDATA%\cc-switch\cc-switch.db`.
 
-If automatic discovery fails, use `增加账号目录` and select the folder containing `cc-switch.db`.
+If automatic discovery fails, use `增加节点目录` and select the folder containing `cc-switch.db`.
 
 ## Completion Popup
 
@@ -196,7 +197,7 @@ The GUI can enable a local completion popup for Codex responses. When `每次完
 - watches recent `rollout-*.jsonl` files for `task_complete` events;
 - shows a topmost Windows popup and plays a short notification sound;
 - includes a compact account, chat, and last user-task summary when local rollout context is available.
-- also tries to parse event arguments passed by Codex Desktop's direct `notify` call and display the same compact summary.
+- also tries to parse event arguments passed by Codex Desktop's direct `notify` call; when those arguments are incomplete, it fills account, chat, and task context from the latest local rollout file.
 
 This is local-only. It reads local session files and does not send notification data anywhere.
 
@@ -262,7 +263,9 @@ If the provider list looks incomplete, click `刷新` after opening Codex once w
 
 If a sync fails because a rollout file is being written, close or pause active Codex work and retry. The copy routine already retries briefly when files are busy.
 
-If cc-switch nodes do not appear, click `增加账号目录` and choose the directory that contains `cc-switch.db`.
+If Codex startup shows `MCP client for node_repl failed to start`, the usual cause is a stale Codex Desktop runtime path after an app update. When the GUI switches nodes or enables completion popups, it automatically repairs the `node_repl.exe`, `node.exe`, `node_modules`, and `codex.exe` paths in `config.toml`.
+
+If cc-switch nodes do not appear, click `增加节点目录` and choose the directory that contains `cc-switch.db`.
 
 ## Development Notes
 
