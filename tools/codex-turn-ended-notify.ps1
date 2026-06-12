@@ -1,9 +1,13 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Title,
     [string]$Message,
+    [string]$MessageBase64,
     [int]$Seconds = 12,
     [string]$ForwardBase64,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RemainingArgs
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -18,15 +22,130 @@ function ConvertFrom-Utf8Base64 {
     return $utf8.GetString([Convert]::FromBase64String($Value))
 }
 
+function Shorten-Text {
+    param(
+        [AllowNull()][string]$Text,
+        [int]$Max = 52
+    )
+
+    if ($null -eq $Text) { return '' }
+    $clean = ($Text -replace '\s+', ' ').Trim()
+    if ($clean.Length -le $Max) { return $clean }
+    return $clean.Substring(0, [Math]::Max(0, $Max - 1)) + '...'
+}
+
+function Get-PropertyValue {
+    param(
+        [AllowNull()]$Object,
+        [Parameter(Mandatory)][string[]]$Names
+    )
+
+    if ($null -eq $Object) { return '' }
+    foreach ($name in $Names) {
+        $property = $Object.PSObject.Properties[$name]
+        if ($property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+            return [string]$property.Value
+        }
+    }
+    return ''
+}
+
+function Get-NestedPropertyValue {
+    param(
+        [AllowNull()]$Object,
+        [Parameter(Mandatory)][string[]]$Names
+    )
+
+    $direct = Get-PropertyValue -Object $Object -Names $Names
+    if (-not [string]::IsNullOrWhiteSpace($direct)) { return $direct }
+
+    foreach ($childName in @('payload', 'event', 'data')) {
+        $child = $null
+        if ($Object -and $Object.PSObject.Properties[$childName]) {
+            $child = $Object.PSObject.Properties[$childName].Value
+        }
+        $value = Get-PropertyValue -Object $child -Names $Names
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    }
+    return ''
+}
+
+function Get-NotifyMessageFromJsonObject {
+    param([AllowNull()]$Object)
+
+    if ($null -eq $Object) { return '' }
+
+    $provider = Get-NestedPropertyValue $Object @('model_provider', 'modelProvider', 'provider', 'account', 'accountName')
+    $cwd = Get-NestedPropertyValue $Object @('cwd', 'working_directory', 'workingDirectory', 'workspace', 'directory')
+    $thread = Get-NestedPropertyValue $Object @('thread_id', 'threadId', 'session_id', 'sessionId', 'conversation_id', 'conversationId', 'turn_id', 'turnId')
+    $task = Get-NestedPropertyValue $Object @('last_user_message', 'lastUserMessage', 'user_message', 'userMessage', 'prompt', 'input', 'message', 'summary')
+
+    if ([string]::IsNullOrWhiteSpace($provider)) {
+        $provider = ConvertFrom-Utf8Base64 '5pyq55+l6LSm5Y+3'
+    }
+    $cwdLabel = ''
+    if (-not [string]::IsNullOrWhiteSpace($cwd)) {
+        try { $cwdLabel = Split-Path -Leaf $cwd } catch { $cwdLabel = $cwd }
+    }
+    if ([string]::IsNullOrWhiteSpace($cwdLabel)) {
+        $cwdLabel = ConvertFrom-Utf8Base64 '5pyq55+l55uu5b2V'
+    }
+    if ([string]::IsNullOrWhiteSpace($thread)) {
+        $thread = ConvertFrom-Utf8Base64 '5b2T5YmN5Lya6K+d'
+    }
+    elseif ($thread.Length -gt 8) {
+        $thread = $thread.Substring(0, 8)
+    }
+    if ([string]::IsNullOrWhiteSpace($task) -or $task.Trim().StartsWith('{')) {
+        $task = ConvertFrom-Utf8Base64 '5b2T5YmN5Lu75Yqh5bey5a6M5oiQ'
+    }
+
+    $accountLabel = ConvertFrom-Utf8Base64 '6LSm5Y+377ya'
+    $threadLabel = ConvertFrom-Utf8Base64 '6IGK5aSp77ya'
+    $taskLabel = ConvertFrom-Utf8Base64 '5Lu75Yqh77ya'
+    return "$accountLabel$(Shorten-Text $provider 18) | $(Shorten-Text $cwdLabel 24)`r`n$threadLabel$(Shorten-Text $thread 18)`r`n$taskLabel$(Shorten-Text $task 52)"
+}
+
+function Get-NotifyMessageFromArgs {
+    param([AllowNull()][string[]]$Args)
+
+    foreach ($arg in @($Args)) {
+        if ([string]::IsNullOrWhiteSpace($arg)) { continue }
+        $text = $arg.Trim()
+        if (-not ($text.StartsWith('{') -or $text.StartsWith('['))) { continue }
+        try {
+            $obj = $text | ConvertFrom-Json
+            $message = Get-NotifyMessageFromJsonObject $obj
+            if (-not [string]::IsNullOrWhiteSpace($message)) { return $message }
+        }
+        catch {
+            continue
+        }
+    }
+    return ''
+}
+
 if ([string]::IsNullOrWhiteSpace($Title)) {
     $Title = ConvertFrom-Utf8Base64 'Q29kZXgg5Lya6K+d5bey57uT5p2f'
+}
+if (-not [string]::IsNullOrWhiteSpace($MessageBase64)) {
+    $Message = ConvertFrom-Utf8Base64 $MessageBase64
+}
+elseif ($RemainingArgs -and $RemainingArgs.Count -gt 0) {
+    $argMessage = Get-NotifyMessageFromArgs $RemainingArgs
+    if (-not [string]::IsNullOrWhiteSpace($argMessage)) {
+        $Message = $argMessage
+    }
 }
 if ([string]::IsNullOrWhiteSpace($Message)) {
     $Message = ConvertFrom-Utf8Base64 'Q29kZXgg5bey5a6M5oiQ5b2T5YmN5Lya6K+d44CC'
 }
 
 function Invoke-ForwardNotify {
-    param([AllowNull()][string]$EncodedCommand)
+    param(
+        [AllowNull()][string]$EncodedCommand,
+        [AllowNull()][string[]]$ExtraArgs
+    )
 
     if ([string]::IsNullOrWhiteSpace($EncodedCommand)) { return }
 
@@ -44,6 +163,9 @@ function Invoke-ForwardNotify {
                 $arguments += [string]$command[$i]
             }
         }
+        foreach ($arg in @($ExtraArgs)) {
+            if ($null -ne $arg) { $arguments += [string]$arg }
+        }
 
         Start-Process -FilePath $filePath -ArgumentList $arguments -WindowStyle Hidden | Out-Null
     }
@@ -57,7 +179,7 @@ if ($SelfTest) {
     return
 }
 
-Invoke-ForwardNotify $ForwardBase64
+Invoke-ForwardNotify -EncodedCommand $ForwardBase64 -ExtraArgs $RemainingArgs
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -152,10 +274,10 @@ $form.Controls.Add($titleLabel)
 
 $messageLabel = New-Object System.Windows.Forms.Label
 $messageLabel.Text = $Message
-$messageLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$messageLabel.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
 $messageLabel.ForeColor = [System.Drawing.Color]::FromArgb(68, 76, 88)
-$messageLabel.Location = New-Object System.Drawing.Point(80, 54)
-$messageLabel.Size = New-Object System.Drawing.Size(($width - 104), 42)
+$messageLabel.Location = New-Object System.Drawing.Point(80, 50)
+$messageLabel.Size = New-Object System.Drawing.Size(($width - 104), 62)
 $messageLabel.TextAlign = 'TopLeft'
 $form.Controls.Add($messageLabel)
 
@@ -173,8 +295,8 @@ $form.Controls.Add($bottomLine)
 
 $closeButton = New-Object System.Windows.Forms.Button
 $closeButton.Text = ConvertFrom-Utf8Base64 '55+l6YGT5LqG'
-$closeButton.Location = New-Object System.Drawing.Point(($width - 102), 104)
-$closeButton.Size = New-Object System.Drawing.Size(82, 30)
+$closeButton.Location = New-Object System.Drawing.Point(($width - 98), 116)
+$closeButton.Size = New-Object System.Drawing.Size(78, 26)
 $closeButton.FlatStyle = 'Flat'
 $closeButton.FlatAppearance.BorderSize = 0
 $closeButton.BackColor = [System.Drawing.Color]::FromArgb(34, 111, 245)
@@ -215,10 +337,16 @@ $closeTimer.Add_Tick({
         $form.Close()
     })
 
+$soundTimer = New-Object System.Windows.Forms.Timer
+$soundTimer.Interval = 140
+$soundTimer.Add_Tick({
+        $soundTimer.Stop()
+        Play-NotifySound
+    })
+
 $form.Add_Shown({
         $region = [CodexNotifyNative]::CreateRoundRectRgn(0, 0, $form.Width + 1, $form.Height + 1, 14, 14)
         [void][CodexNotifyNative]::SetWindowRgn($form.Handle, $region, $true)
-        Play-NotifySound
         $form.TopMost = $true
         [void][CodexNotifyNative]::ShowWindow($form.Handle, [CodexNotifyNative]::SW_RESTORE)
         [void][CodexNotifyNative]::ShowWindow($form.Handle, [CodexNotifyNative]::SW_SHOWNORMAL)
@@ -235,13 +363,18 @@ $form.Add_Shown({
         )
         $keepTopTimer.Start()
         $closeTimer.Start()
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+        $soundTimer.Start()
     })
 
 $form.Add_FormClosed({
         $keepTopTimer.Stop()
         $closeTimer.Stop()
+        $soundTimer.Stop()
         $keepTopTimer.Dispose()
         $closeTimer.Dispose()
+        $soundTimer.Dispose()
         $form.Dispose()
     })
 

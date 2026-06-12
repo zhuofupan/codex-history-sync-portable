@@ -93,6 +93,12 @@ The GUI opens with these main controls:
 | `同步勾选` | Copy only checked rows |
 | `同步全部` | Copy all listed source rows to the target provider |
 | `双向同步` | Sync both directions between the selected providers |
+| `cc switch节点` | cc-switch Codex node used by `从终端启动` |
+| `从终端启动` | Open an elevated terminal; start a new chat when no row is checked; resume the one checked thread; reject multiple checked rows |
+| `用 PowerShell` | Prefer PowerShell when checked; prefer CMD when unchecked; fall back automatically if the preferred terminal is unavailable |
+| `打开配置` | Open root `codex-history-sync-config.json`; the GUI creates it if missing and reloads it after saves |
+| `帮助` | Show path/account/start/update guidance and copy Everything search terms |
+| `检查更新` | Check GitHub main for a newer version and apply a one-click hot update |
 | `增加记录目录` | Manually load a `.codex` directory |
 
 ## CLI Usage
@@ -143,6 +149,20 @@ A valid Codex history directory usually contains:
 
 If you select `sessions` or a nested sessions folder by mistake, the GUI walks upward until it finds the parent directory containing `state_5.sqlite`.
 
+## Config File
+
+If a new user sees `请先选择账号` or `找不到 codex.exe`, click `打开配置`, fill the paths described in `_help`, then save the file.
+
+1. The GUI creates root `codex-history-sync-config.json` automatically.
+2. If Codex history, cc-switch nodes, or Codex CLI are detected, the config file is filled with those paths and account lists.
+3. After you edit and save the config file, the GUI reloads it automatically.
+
+`codex-history-sync-config.template.json` is a generic shareable template. The real local configuration lives in `codex-history-sync-config.json`. Keep API keys and tokens out of this file; it is intended only for local paths and default UI choices.
+
+When no root `codex-history-sync-config.json` exists, the GUI restores the last saved runtime state from `%APPDATA%\codex-history-sync-portable\last-state.json`. That state stores local paths, selected providers, the directory filter, and checkbox choices, but not API keys or tokens.
+
+`从终端启动` writes the current workspace to Codex `config.toml` as a trusted project and also passes the same trust override to Codex at launch, which reduces repeated `Do you trust the contents of this directory?` prompts for the same directory.
+
 ## Sync Semantics
 
 `clone` and `sync` are copy operations, not moves. The original thread remains under the source provider. The target thread receives its own generated id and points to its own copied rollout file.
@@ -174,7 +194,9 @@ The GUI can enable a local completion popup for Codex responses. When `每次完
 - writes the local Codex `notify` setting to use `tools\codex-turn-ended-notify.vbs`;
 - starts `tools\codex-turn-complete-monitor.vbs`;
 - watches recent `rollout-*.jsonl` files for `task_complete` events;
-- shows a topmost Windows popup and plays a short notification sound.
+- shows a topmost Windows popup and plays a short notification sound;
+- includes a compact account, chat, and last user-task summary when local rollout context is available.
+- also tries to parse event arguments passed by Codex Desktop's direct `notify` call and display the same compact summary.
 
 This is local-only. It reads local session files and does not send notification data anywhere.
 

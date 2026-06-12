@@ -18,6 +18,8 @@ codex-history-sync-map.json
 *.pfx
 *.p12
 settings.json
+codex-history-sync-config.json
+.local-state/
 config.local.*
 
 # Logs, backups, and temporary output

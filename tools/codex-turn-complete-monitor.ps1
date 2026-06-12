@@ -77,7 +77,134 @@ if (-not $createdNew) { return }
 $script:MonitorStartedAt = [DateTimeOffset]::UtcNow
 $script:Offsets = @{}
 $script:Buffers = @{}
+$script:Contexts = @{}
 $script:SeenTurns = New-Object 'System.Collections.Generic.HashSet[string]'
+
+function Shorten-Text {
+    param(
+        [AllowNull()][string]$Text,
+        [int]$Max = 48
+    )
+
+    if ($null -eq $Text) { return '' }
+    $clean = ($Text -replace '\s+', ' ').Trim()
+    if ($clean.Length -le $Max) { return $clean }
+    return $clean.Substring(0, [Math]::Max(0, $Max - 1)) + '...'
+}
+
+function ConvertTo-Utf8Base64 {
+    param([AllowNull()][string]$Value)
+
+    if ($null -eq $Value) { $Value = '' }
+    return [Convert]::ToBase64String($utf8.GetBytes($Value))
+}
+
+function Get-ContextForFile {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not $script:Contexts.ContainsKey($Path)) {
+        $script:Contexts[$Path] = @{
+            Provider     = ''
+            Cwd          = ''
+            ThreadId     = ''
+            LastUserTask = ''
+        }
+    }
+    return $script:Contexts[$Path]
+}
+
+function Get-MessageText {
+    param([AllowNull()]$Payload)
+
+    if ($null -eq $Payload) { return '' }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Payload.message)) {
+        return [string]$Payload.message
+    }
+
+    $texts = New-Object System.Collections.Generic.List[string]
+    foreach ($part in @($Payload.content)) {
+        if ($null -eq $part) { continue }
+        if (-not [string]::IsNullOrWhiteSpace([string]$part.text)) {
+            $texts.Add([string]$part.text)
+        }
+    }
+    return ($texts.ToArray() -join "`n")
+}
+
+function Test-UserTaskText {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $clean = $Text.Trim()
+    if ($clean.StartsWith('<environment_context>')) { return $false }
+    if ($clean.StartsWith('<developer_context>')) { return $false }
+    if ($clean -match '^\s*#\s*Files mentioned by the user:') { return $false }
+    return $true
+}
+
+function Update-RolloutContext {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)]$Object
+    )
+
+    $context = Get-ContextForFile $Path
+    if ([string]$Object.type -eq 'session_meta') {
+        if (-not [string]::IsNullOrWhiteSpace([string]$Object.payload.model_provider)) {
+            $context.Provider = [string]$Object.payload.model_provider
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$Object.payload.cwd)) {
+            $context.Cwd = [string]$Object.payload.cwd
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$Object.payload.id)) {
+            $context.ThreadId = [string]$Object.payload.id
+        }
+        return
+    }
+
+    if ([string]$Object.type -eq 'turn_context' -and
+        -not [string]::IsNullOrWhiteSpace([string]$Object.cwd)) {
+        $context.Cwd = [string]$Object.cwd
+        return
+    }
+
+    $payloadType = [string]$Object.payload.type
+    $role = [string]$Object.payload.role
+    $isUserMessage = (
+        ([string]$Object.type -eq 'response_item' -and $payloadType -eq 'message' -and $role -eq 'user') -or
+        ([string]$Object.type -eq 'event_msg' -and $payloadType -eq 'user_message')
+    )
+    if (-not $isUserMessage) { return }
+
+    $text = Get-MessageText $Object.payload
+    if (Test-UserTaskText $text) {
+        $context.LastUserTask = $text
+    }
+}
+
+function Initialize-RolloutContext {
+    param([Parameter(Mandatory)][string]$Path)
+
+    [void](Get-ContextForFile $Path)
+    try {
+        $lines = @()
+        $lines += @(Get-Content -LiteralPath $Path -TotalCount 80 -ErrorAction SilentlyContinue)
+        $lines += @(Get-Content -LiteralPath $Path -Tail 240 -ErrorAction SilentlyContinue)
+        foreach ($line in $lines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $obj = $line | ConvertFrom-Json
+            }
+            catch {
+                continue
+            }
+            Update-RolloutContext -Path $Path -Object $obj
+        }
+    }
+    catch {
+        return
+    }
+}
 
 function Get-RolloutFiles {
     if (-not (Test-Path -LiteralPath $script:SessionsDir -PathType Container)) { return @() }
@@ -91,12 +218,38 @@ function Initialize-Baseline {
     foreach ($file in Get-RolloutFiles) {
         $script:Offsets[$file.FullName] = [int64]$file.Length
         $script:Buffers[$file.FullName] = ''
+        Initialize-RolloutContext ([string]$file.FullName)
     }
 }
 
 function Invoke-CompletionPopup {
+    param([AllowNull()]$Context)
+
     $title = ConvertFrom-Utf8Base64 'Q29kZXgg5Lu75Yqh5a6M5oiQ'
-    $message = ConvertFrom-Utf8Base64 'Q29kZXgg5bey5a6M5oiQ5LiA5Liq5Zue5aSN44CC'
+    $unknownAccount = ConvertFrom-Utf8Base64 '5pyq55+l6LSm5Y+3'
+    $unknownCwd = ConvertFrom-Utf8Base64 '5pyq55+l55uu5b2V'
+    $currentThread = ConvertFrom-Utf8Base64 '5b2T5YmN5Lya6K+d'
+    $currentTaskDone = ConvertFrom-Utf8Base64 '5b2T5YmN5Lu75Yqh5bey5a6M5oiQ'
+    $accountLabel = ConvertFrom-Utf8Base64 '6LSm5Y+377ya'
+    $threadLabelPrefix = ConvertFrom-Utf8Base64 '6IGK5aSp77ya'
+    $taskLabel = ConvertFrom-Utf8Base64 '5Lu75Yqh77ya'
+
+    $provider = Shorten-Text ([string]$Context.Provider) 18
+    if ([string]::IsNullOrWhiteSpace($provider)) { $provider = $unknownAccount }
+
+    $cwd = [string]$Context.Cwd
+    $cwdLabel = if (-not [string]::IsNullOrWhiteSpace($cwd)) { Split-Path -Leaf $cwd } else { $unknownCwd }
+    if ([string]::IsNullOrWhiteSpace($cwdLabel)) { $cwdLabel = Shorten-Text $cwd 24 }
+
+    $threadId = [string]$Context.ThreadId
+    $threadLabel = if ($threadId.Length -gt 8) { $threadId.Substring(0, 8) } else { $threadId }
+    if ([string]::IsNullOrWhiteSpace($threadLabel)) { $threadLabel = $currentThread }
+
+    $task = Shorten-Text ([string]$Context.LastUserTask) 52
+    if ([string]::IsNullOrWhiteSpace($task)) { $task = $currentTaskDone }
+
+    $message = "$accountLabel$provider | $cwdLabel`r`n$threadLabelPrefix$threadLabel`r`n$taskLabel$task"
+    $messageBase64 = ConvertTo-Utf8Base64 $message
 
     if (-not [string]::IsNullOrWhiteSpace($NotifierLauncherPath) -and
         (Test-Path -LiteralPath $NotifierLauncherPath)) {
@@ -104,8 +257,8 @@ function Invoke-CompletionPopup {
             $NotifierLauncherPath,
             '-Title',
             $title,
-            '-Message',
-            $message,
+            '-MessageBase64',
+            $messageBase64,
             '-Seconds',
             ([string]$Seconds)
         ) -WindowStyle Hidden | Out-Null
@@ -125,8 +278,8 @@ function Invoke-CompletionPopup {
             $NotifierPath,
             '-Title',
             $title,
-            '-Message',
-            $message,
+            '-MessageBase64',
+            $messageBase64,
             '-Seconds',
             ([string]$Seconds)
         ) -WindowStyle Hidden | Out-Null
@@ -166,30 +319,29 @@ function Read-AppendedText {
     }
 }
 
-function Test-TaskCompleteLine {
-    param([Parameter(Mandatory)][string]$Line)
+function Get-TaskCompleteKey {
+    param([Parameter(Mandatory)]$Object)
 
     try {
-        $obj = $Line | ConvertFrom-Json
-        if ([string]$obj.type -ne 'event_msg') { return $false }
-        if ([string]$obj.payload.type -ne 'task_complete') { return $false }
+        if ([string]$Object.type -ne 'event_msg') { return $null }
+        if ([string]$Object.payload.type -ne 'task_complete') { return $null }
 
         $eventTime = [DateTimeOffset]::MinValue
-        if (-not [string]::IsNullOrWhiteSpace([string]$obj.timestamp)) {
-            $eventTime = [DateTimeOffset]::Parse([string]$obj.timestamp)
+        if (-not [string]::IsNullOrWhiteSpace([string]$Object.timestamp)) {
+            $eventTime = [DateTimeOffset]::Parse([string]$Object.timestamp)
         }
-        if ($eventTime -lt $script:MonitorStartedAt.AddSeconds(-2)) { return $false }
+        if ($eventTime -lt $script:MonitorStartedAt.AddSeconds(-2)) { return $null }
 
-        $turnId = [string]$obj.payload.turn_id
+        $turnId = [string]$Object.payload.turn_id
         if ([string]::IsNullOrWhiteSpace($turnId)) {
-            $turnId = [string]$obj.timestamp
+            $turnId = [string]$Object.timestamp
         }
-        if ([string]::IsNullOrWhiteSpace($turnId)) { return $false }
+        if ([string]::IsNullOrWhiteSpace($turnId)) { return $null }
 
-        return $script:SeenTurns.Add($turnId)
+        return $turnId
     }
     catch {
-        return $false
+        return $null
     }
 }
 
@@ -200,6 +352,7 @@ function Process-RolloutFile {
     if (-not $script:Offsets.ContainsKey($path)) {
         $script:Offsets[$path] = [int64]0
         $script:Buffers[$path] = ''
+        Initialize-RolloutContext $path
     }
 
     $read = Read-AppendedText $path ([int64]$script:Offsets[$path])
@@ -222,8 +375,16 @@ function Process-RolloutFile {
     for ($i = 0; $i -lt $count; $i++) {
         $line = ([string]$parts[$i]).TrimEnd("`r")
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        if (Test-TaskCompleteLine $line) {
-            Invoke-CompletionPopup
+        try {
+            $obj = $line | ConvertFrom-Json
+        }
+        catch {
+            continue
+        }
+        Update-RolloutContext -Path $path -Object $obj
+        $taskCompleteKey = Get-TaskCompleteKey $obj
+        if (-not [string]::IsNullOrWhiteSpace($taskCompleteKey) -and $script:SeenTurns.Add($taskCompleteKey)) {
+            Invoke-CompletionPopup -Context (Get-ContextForFile $path)
         }
     }
 }

@@ -90,8 +90,13 @@ GUI 里的主要控件如下：
 | `同步勾选` | 只同步已勾选的记录 |
 | `同步全部` | 同步当前源账号下列出的记录 |
 | `双向同步` | 在两个 provider 桶之间互相同步 |
+| `cc switch节点` | `从终端启动` 时使用哪个 cc-switch Codex 节点 |
+| `从终端启动` | 以管理员身份打开终端；不勾选记录时新建对话；只勾选一条记录时自动恢复该会话；多选会提示只保留一条 |
+| `用 PowerShell` | 勾选时优先用 PowerShell 启动；取消勾选时优先用 CMD 启动；找不到首选终端时会自动退回另一种 |
+| `打开配置` | 打开根目录 `codex-history-sync-config.json`；首次会自动生成，保存后 GUI 自动刷新 |
+| `帮助` | 显示记录目录、账号目录、启动、更新等说明，并复制 Everything 搜索关键词 |
+| `检查更新` | 从 GitHub main 分支检查版本，发现新版后可一键热更新 |
 | `增加记录目录` | 手动选择 `.codex` 历史目录 |
-| `记录目录寻找提示` | 把 `state_5.sqlite` 复制到剪贴板，方便用 Everything 搜索 |
 
 如果你误选了 `sessions` 或它下面的子目录，工具会自动向上查找包含 `state_5.sqlite` 的父目录。
 
@@ -143,6 +148,20 @@ codex-history-sync.cmd mirror -Providers openai,custom
 
 找到后，GUI 日志区会显示 `Codex 记录目录：...`。如果没找到，GUI 会保持打开，等待你点击 `增加记录目录`。
 
+## 配置文件
+
+新用户如果遇到 `请先选择账号` 或 `找不到 codex.exe`，点击 `打开配置`，按 `_help` 里的中文说明填写路径后保存即可。
+
+1. GUI 会在根目录自动生成 `codex-history-sync-config.json`。
+2. 如果已经自动检测到 Codex 历史记录、cc-switch 节点或 Codex CLI，配置文件会自动写入这些路径和账号列表。
+3. 修改并保存配置文件后，GUI 会自动重新读取并刷新界面。
+
+`codex-history-sync-config.template.json` 只是通用模板，适合发给别人参考；真实本机配置只写在 `codex-history-sync-config.json`。这个文件只适合保存本机路径和默认选项，不要写 API key 或 token。
+
+如果根目录没有 `codex-history-sync-config.json`，GUI 会自动读取上一次运行保存的状态。这个状态保存在 `%APPDATA%\codex-history-sync-portable\last-state.json`，包含记录目录、账号目录、下拉菜单选择、目录筛选和勾选项，不包含 API key 或 token。
+
+`从终端启动` 会在 Codex `config.toml` 里把当前工作目录写为 trusted，并在启动命令里追加同样的 trust 覆盖参数，减少每次进入同一个目录都出现 `Do you trust the contents of this directory?` 确认提示。
+
 ## 同步规则
 
 `clone` 和 `sync` 都是复制，不是移动。源线程仍然保留在原 provider 桶里，目标线程会有自己的新 id 和自己的 rollout 文件。
@@ -176,7 +195,9 @@ GUI 里的 `每次完成弹窗` 默认用于本地提醒。启用后，工具会
 - 把 Codex 的 `notify` 设置写成 `tools\codex-turn-ended-notify.vbs`；
 - 启动 `tools\codex-turn-complete-monitor.vbs`；
 - 监控最近的 `rollout-*.jsonl` 文件；
-- 发现 `task_complete` 事件后弹出置顶提示并播放提示音。
+- 发现 `task_complete` 事件后弹出置顶提示并播放提示音；
+- 弹窗会尽量显示账号、完成的聊天和最近一条用户任务摘要。
+- 桌面版 Codex 直接调用 `notify` 时，工具也会尝试解析 Codex 传入的事件参数并显示摘要。
 
 这个功能只读取本机 session 文件，不会把通知内容发送到外部服务。
 
