@@ -10,7 +10,7 @@
     "usePowerShellTerminal": "true 表示从终端启动时优先用 PowerShell；false 表示优先用 CMD。",
     "security": "不要在这里写 API key、token、auth.json、config.toml 或 state_5.sqlite 内容。"
   },
-  "version": "2026.06.13.3",
+  "version": "2026.06.13.4",
   "codexHome": "",
   "ccSwitchHome": "",
   "codexExe": "",

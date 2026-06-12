@@ -31,7 +31,7 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.3'
+$script:AppVersion = '2026.06.13.4'
 $script:AppAuthor = 'zhuofupan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
@@ -1344,16 +1344,27 @@ function Invoke-HttpDownload {
     )
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    if ([string]::IsNullOrWhiteSpace($OutFile)) {
-        return (Invoke-WebRequest -UseBasicParsing -Uri $Uri -Headers @{ 'Cache-Control' = 'no-cache' }).Content
+    $headers = @{
+        'Cache-Control' = 'no-cache'
+        'User-Agent'    = 'codex-history-sync-portable'
     }
-    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile -Headers @{ 'Cache-Control' = 'no-cache' }
+    if ([string]::IsNullOrWhiteSpace($OutFile)) {
+        return (Invoke-WebRequest -UseBasicParsing -Uri $Uri -Headers $headers).Content
+    }
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile -Headers $headers
 }
 
 function Get-RemoteAppVersion {
-    $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    $uri = "https://raw.githubusercontent.com/$script:GitHubRepo/main/tools/codex-history-sync-gui.ps1?ts=$stamp"
-    $content = Invoke-HttpDownload -Uri $uri
+    $apiUri = "https://api.github.com/repos/$script:GitHubRepo/contents/tools/codex-history-sync-gui.ps1?ref=main"
+    try {
+        $api = Invoke-HttpDownload -Uri $apiUri | ConvertFrom-Json
+        $content = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($api.content -replace '\s', '')))
+    }
+    catch {
+        $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $rawUri = "https://raw.githubusercontent.com/$script:GitHubRepo/main/tools/codex-history-sync-gui.ps1?ts=$stamp"
+        $content = Invoke-HttpDownload -Uri $rawUri
+    }
     $match = [System.Text.RegularExpressions.Regex]::Match($content, '\$script:AppVersion\s*=\s*''([^'']+)''')
     if (-not $match.Success) {
         $script:LastUpdateCheckNote = '远端版本暂未声明 AppVersion，无法判断它是否更新。'
