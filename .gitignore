@@ -1,0 +1,49 @@
+# Local Codex data
+.codex/
+sessions/
+state_5.sqlite
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+codex-history-sync-map.json
+.codex-global-state.json
+
+# Secrets and local configuration
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+settings.json
+config.local.*
+
+# Logs, backups, and temporary output
+*.log
+*.tmp
+*.bak
+*.backup
+backups/
+history-sync-*/
+codex-provider-switch-*/
+
+# Build and dependency directories
+dist/
+build/
+out/
+node_modules/
+.venv/
+venv/
+__pycache__/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Keep the intended portable SQLite binary if executable ignores are added later.
+!bin/sqlite3.exe
