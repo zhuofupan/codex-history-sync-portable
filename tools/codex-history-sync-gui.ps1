@@ -31,7 +31,7 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.12'
+$script:AppVersion = '2026.06.13.13'
 $script:AppAuthor = 'zhuofupan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
@@ -204,7 +204,7 @@ function Get-CcSwitchHomeHelpText {
 如果自动加载不到新增账号：
 - 先在 cc-switch 里确认已经新增并保存 Codex 节点
 - 回到本工具点击【刷新】
-- 仍然没有时，点击【导入cc配置】，选择包含 cc-switch.db 的目录
+- 仍然没有时，点击【加载cc-switch.db配置】，选择包含 cc-switch.db 的目录
 
 找不到时可以用 Everything 搜索 cc-switch.db，然后选择这个文件所在的目录。
 "@
@@ -290,7 +290,7 @@ $script:UiStrings = @{
         AddHistory           = '增加聊天记录'
         OpenChatDir          = '打开聊天目录'
         CodexDir             = 'codex目录'
-        ImportCcConfig       = '导入cc配置'
+        ImportCcConfig       = '加载cc-switch.db配置'
         Settings             = '软件设置'
         LaunchTerminal       = '从终端启动'
         LoadCheckedRecord    = '按勾选加载聊天'
@@ -318,23 +318,23 @@ $script:UiStrings = @{
         MenuCheckOnly        = '只勾选此记录'
         MenuLaunchTerminal   = '启动终端'
         MenuLaunchWithChat   = '启动终端（+聊天）'
-        MenuSyncCurrent      = '同步至目标账号 [此条]'
-        MenuSyncChecked      = '同步至目标账号 [勾选]'
-        MenuSyncAll          = '同步至目标账号 [所有]'
+        MenuSyncCurrent      = '同步至目标账号（此条）'
+        MenuSyncChecked      = '同步至目标账号（勾选）'
+        MenuSyncAll          = '同步至目标账号（所有）'
         StatusReady          = '就绪'
     }
     'en-US' = @{
         AllFolders           = 'All folders'
         FormTitle            = 'Codex History Sync'
         HeaderTitle          = 'Codex History Sync'
-        HeaderSubtitle       = 'Local history migration, provider launch, and completion alerts'
+        HeaderSubtitle       = 'Local history migration, provider launch, completion alerts'
         AuthorLabel          = 'Author'
         LanguageLabel        = 'Language'
         GroupHistory         = 'History Filter'
         GroupSync            = 'Sync Actions'
-        GroupPath            = 'Paths & Config'
-        GroupLaunch          = 'Launch & Alerts'
-        GroupSupport         = 'Help & Update'
+        GroupPath            = 'Paths and Config'
+        GroupLaunch          = 'Launch and Alerts'
+        GroupSupport         = 'Help and Update'
         SourceProvider       = 'Codex Source'
         TargetProvider       = 'Codex Target'
         DirectoryFilter      = 'Directory'
@@ -351,7 +351,7 @@ $script:UiStrings = @{
         AddHistory           = 'Add History'
         OpenChatDir          = 'Open Chat Dir'
         CodexDir             = 'Codex Dir'
-        ImportCcConfig       = 'Import cc Config'
+        ImportCcConfig       = 'Load cc-switch.db Config'
         Settings             = 'Settings'
         LaunchTerminal       = 'Launch Terminal'
         LoadCheckedRecord    = 'Load Checked Chat'
@@ -379,9 +379,9 @@ $script:UiStrings = @{
         MenuCheckOnly        = 'Only Check This Row'
         MenuLaunchTerminal   = 'Launch Terminal'
         MenuLaunchWithChat   = 'Launch Terminal (+Chat)'
-        MenuSyncCurrent      = 'Sync to Target [This]'
-        MenuSyncChecked      = 'Sync to Target [Checked]'
-        MenuSyncAll          = 'Sync to Target [All]'
+        MenuSyncCurrent      = 'Sync to Target (This)'
+        MenuSyncChecked      = 'Sync to Target (Checked)'
+        MenuSyncAll          = 'Sync to Target (All)'
         StatusReady          = 'Ready'
     }
 }
@@ -864,6 +864,20 @@ function Get-LanguageFromDisplayText {
     return 'zh-CN'
 }
 
+function Get-LanguageToggleText {
+    if ($script:UiLanguage -eq 'en-US') { return '中文' }
+    return 'English'
+}
+
+function Toggle-UiLanguage {
+    if ($script:UiLanguage -eq 'en-US') {
+        Set-UiLanguage 'zh-CN'
+    }
+    else {
+        Set-UiLanguage 'en-US'
+    }
+}
+
 function Measure-UiTextWidth {
     param(
         [AllowNull()][string]$Text,
@@ -930,19 +944,33 @@ function Resize-GroupToFitControls {
         $maxBottom = [Math]::Max($maxBottom, $control.Bottom)
     }
 
+    $titleWidth = 0
+    if (-not [string]::IsNullOrWhiteSpace([string]$Group.Text)) {
+        $titleWidth = Measure-UiTextWidth -Text ([string]$Group.Text) -Font $Group.Font -Extra 34
+    }
+
     $Group.Size = New-Object System.Drawing.Size(
-        [Math]::Max($MinWidth, $maxRight + $RightPadding),
+        [Math]::Max([Math]::Max($MinWidth, $titleWidth), $maxRight + $RightPadding),
         [Math]::Max($MinHeight, $maxBottom + $BottomPadding)
     )
 }
 
 function Layout-HeaderMeta {
-    if (-not $headerPanel -or -not $headerMeta -or -not $headerGitHub) { return }
+    if (-not $headerPanel -or -not $headerMeta -or -not $headerGitHub -or -not $headerLanguageLink -or -not $headerLanguageSeparator) { return }
 
-    $githubWidth = [Math]::Max(64, (Measure-UiTextWidth -Text ([string]$headerGitHub.Text) -Font $headerGitHub.Font -Extra 10))
     $right = [Math]::Max(1000, $headerPanel.ClientSize.Width) - 28
+    $languageWidth = [Math]::Max(52, (Measure-UiTextWidth -Text ([string]$headerLanguageLink.Text) -Font $headerLanguageLink.Font -Extra 10))
+    $separatorWidth = 14
+    $githubWidth = [Math]::Max(54, (Measure-UiTextWidth -Text ([string]$headerGitHub.Text) -Font $headerGitHub.Font -Extra 8))
+
+    $headerLanguageLink.Size = New-Object System.Drawing.Size($languageWidth, 22)
+    $headerLanguageLink.Location = New-Object System.Drawing.Point(($right - $languageWidth), 20)
+
+    $headerLanguageSeparator.Size = New-Object System.Drawing.Size($separatorWidth, 22)
+    $headerLanguageSeparator.Location = New-Object System.Drawing.Point(($headerLanguageLink.Left - $separatorWidth - 2), 20)
+
     $headerGitHub.Size = New-Object System.Drawing.Size($githubWidth, 22)
-    $headerGitHub.Location = New-Object System.Drawing.Point(($right - $githubWidth), 20)
+    $headerGitHub.Location = New-Object System.Drawing.Point(($headerLanguageSeparator.Left - $githubWidth - 2), 20)
 
     $metaWidth = 430
     $headerMeta.Size = New-Object System.Drawing.Size($metaWidth, 22)
@@ -962,7 +990,7 @@ function Layout-ToolbarGroups {
     foreach ($check in @($script:IncludeArchivedBox, $script:LoadCheckedRecordBox, $script:UsePowerShellLaunchBox, $script:TurnEndedNotifyBox)) {
         Set-ControlWidthForText -Control $check -MinWidth 58 -Extra 28
     }
-    foreach ($label in @($sourceLabel, $targetLabel, $cwdLabel, $limitLabel, $ccProviderLabel, $languageLabel)) {
+    foreach ($label in @($sourceLabel, $targetLabel, $cwdLabel, $limitLabel, $ccProviderLabel)) {
         Set-ControlWidthForText -Control $label -MinWidth 42 -Extra 8
     }
 
@@ -976,7 +1004,7 @@ function Layout-ToolbarGroups {
     Move-Control $limitLabel ($script:CwdCombo.Right + 12) 54
     Move-Control $script:LimitBox ($limitLabel.Right + 6) 54 58 24
     Move-Control $script:IncludeArchivedBox ($script:LimitBox.Right + 8) 55
-    Resize-GroupToFitControls -Group $historyGroup -MinWidth 508 -MinHeight 86
+    Resize-GroupToFitControls -Group $historyGroup -MinWidth 500 -MinHeight 86 -RightPadding 16
 
     $x = 14
     foreach ($button in @($refreshButton, $selectAllButton, $clearSelectionButton, $cloneButton)) {
@@ -988,7 +1016,7 @@ function Layout-ToolbarGroups {
         Move-Control $button $x 54
         $x = $button.Right + 8
     }
-    Resize-GroupToFitControls -Group $syncGroup -MinWidth 328 -MinHeight 86
+    Resize-GroupToFitControls -Group $syncGroup -MinWidth 318 -MinHeight 86 -RightPadding 16
 
     $x = 14
     foreach ($button in @($selectCodexHomeButton, $openRecordFolderButton, $openCodexFolderButton)) {
@@ -1000,7 +1028,7 @@ function Layout-ToolbarGroups {
         Move-Control $button $x 54
         $x = $button.Right + 10
     }
-    Resize-GroupToFitControls -Group $pathGroup -MinWidth 420 -MinHeight 86
+    Resize-GroupToFitControls -Group $pathGroup -MinWidth 0 -MinHeight 86 -RightPadding 18
 
     Move-Control $ccProviderLabel 14 24
     Move-Control $script:CodexProviderCombo ($ccProviderLabel.Right + 6) 24 170 24
@@ -1009,13 +1037,11 @@ function Layout-ToolbarGroups {
     Move-Control $script:LoadCheckedRecordBox ($script:UsePowerShellLaunchBox.Right + 12) 25
     Move-Control $script:TurnEndedNotifyBox ($script:LoadCheckedRecordBox.Right + 12) 25
     Move-Control $testNotifyButton ($script:TurnEndedNotifyBox.Right + 12) 22
-    Resize-GroupToFitControls -Group $launchGroup -MinWidth 880 -MinHeight 58
+    Resize-GroupToFitControls -Group $launchGroup -MinWidth 0 -MinHeight 58 -RightPadding 18
 
     Move-Control $helpButton 14 22
     Move-Control $updateButton ($helpButton.Right + 10) 22
-    Move-Control $languageLabel ($updateButton.Right + 14) 24
-    Move-Control $script:LanguageCombo ($languageLabel.Right + 6) 24 88 24
-    Resize-GroupToFitControls -Group $supportGroup -MinWidth 226 -MinHeight 58
+    Resize-GroupToFitControls -Group $supportGroup -MinWidth 0 -MinHeight 58 -RightPadding 18
 
     $gap = 12
     $historyGroup.Location = New-Object System.Drawing.Point(12, 70)
@@ -1044,6 +1070,8 @@ function Apply-UiLanguage {
         $headerMeta.Text = "v$script:AppVersion  |  $(Get-UiText 'AuthorLabel') $script:AppAuthor  |"
     }
     if ($headerGitHub) { $headerGitHub.Text = 'GitHub' }
+    if ($headerLanguageSeparator) { $headerLanguageSeparator.Text = '|' }
+    if ($headerLanguageLink) { $headerLanguageLink.Text = Get-LanguageToggleText }
     Set-ControlText $historyGroup 'GroupHistory'
     Set-ControlText $syncGroup 'GroupSync'
     Set-ControlText $pathGroup 'GroupPath'
@@ -1054,7 +1082,6 @@ function Apply-UiLanguage {
     Set-ControlText $cwdLabel 'DirectoryFilter'
     Set-ControlText $limitLabel 'DisplayLimit'
     Set-ControlText $ccProviderLabel 'CcSwitchProvider'
-    Set-ControlText $languageLabel 'LanguageLabel'
     Set-ControlText $script:IncludeArchivedBox 'Archived'
     Set-ControlText $refreshButton 'Refresh'
     Set-ControlText $selectAllButton 'SelectAll'
@@ -1075,13 +1102,6 @@ function Apply-UiLanguage {
     Set-ControlText $testNotifyButton 'TestPopup'
     Set-ControlText $helpButton 'Help'
     Set-ControlText $updateButton 'CheckUpdate'
-
-    if ($script:LanguageCombo) {
-        $script:LanguageCombo.Items.Clear()
-        [void]$script:LanguageCombo.Items.Add('中文')
-        [void]$script:LanguageCombo.Items.Add('English')
-        $script:LanguageCombo.SelectedItem = Get-LanguageDisplayText $script:UiLanguage
-    }
 
     $gridHeaders = @{
         Selected    = 'GridSelect'
@@ -1309,7 +1329,7 @@ $(Get-CodexHomeHelpText)
 
 【cc-switch 节点目录】
 $(Get-CcSwitchHomeHelpText)
-- 【导入cc配置】用于选择包含 cc-switch.db 的 cc-switch 配置目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点，用于切换账号和从终端启动。
+- 【加载cc-switch.db配置】用于选择包含 cc-switch.db 的 cc-switch 配置目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点，用于切换账号和从终端启动。
 
 【配置文件】
 - 点击【软件设置】会打开软件根目录下的 codex-history-sync-config.json。
@@ -1330,13 +1350,126 @@ $(Get-CcSwitchHomeHelpText)
 "@
 }
 
+function Add-HelpRichLine {
+    param(
+        [Parameter(Mandatory)][System.Windows.Forms.RichTextBox]$Box,
+        [AllowNull()][string]$Text,
+        [AllowNull()][System.Drawing.Font]$Font,
+        [System.Drawing.Color]$Color = [System.Drawing.Color]::Empty,
+        [System.Drawing.Color]$BackColor = [System.Drawing.Color]::Empty
+    )
+
+    if ($null -eq $Text) { $Text = '' }
+    if ($null -eq $Font) { $Font = $Box.Font }
+    if ($Color.IsEmpty) { $Color = [System.Drawing.Color]::FromArgb(51, 65, 85) }
+    $Box.SelectionStart = $Box.TextLength
+    $Box.SelectionLength = 0
+    $Box.SelectionFont = $Font
+    $Box.SelectionColor = $Color
+    if (-not $BackColor.IsEmpty) {
+        $Box.SelectionBackColor = $BackColor
+    }
+    else {
+        $Box.SelectionBackColor = $Box.BackColor
+    }
+    $Box.AppendText(([string]$Text) + "`r`n")
+}
+
+function Add-HelpRichBlock {
+    param(
+        [Parameter(Mandatory)][System.Windows.Forms.RichTextBox]$Box,
+        [AllowNull()][string]$Text,
+        [Parameter(Mandatory)][System.Drawing.Font]$Font,
+        [Parameter(Mandatory)][System.Drawing.Color]$Color
+    )
+
+    foreach ($line in (([string]$Text) -split "`r?`n")) {
+        Add-HelpRichLine -Box $Box -Text $line -Font $Font -Color $Color
+    }
+}
+
 function Show-AppHelp {
-    [System.Windows.Forms.MessageBox]::Show(
-        (Get-AppHelpText),
-        '帮助',
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Information
-    ) | Out-Null
+    $clipboardNote = if (Copy-TextToClipboard "state_5.sqlite`r`ncc-switch.db") {
+        "已复制 state_5.sqlite 和 cc-switch.db 到剪贴板，可直接粘贴到 Everything 搜索。"
+    }
+    else {
+        "复制搜索关键词到剪贴板失败，请手动搜索 state_5.sqlite 或 cc-switch.db。"
+    }
+
+    $helpForm = New-Object System.Windows.Forms.Form
+    $helpForm.Text = '帮助'
+    $helpForm.StartPosition = 'CenterParent'
+    $helpForm.Size = New-Object System.Drawing.Size(820, 640)
+    $helpForm.MinimumSize = New-Object System.Drawing.Size(720, 520)
+    $helpForm.BackColor = [System.Drawing.Color]::White
+    $helpForm.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
+
+    $box = New-Object System.Windows.Forms.RichTextBox
+    $box.Location = New-Object System.Drawing.Point(18, 18)
+    $box.Size = New-Object System.Drawing.Size(768, 532)
+    $box.Anchor = 'Top,Bottom,Left,Right'
+    $box.BorderStyle = 'None'
+    $box.BackColor = [System.Drawing.Color]::White
+    $box.ReadOnly = $true
+    $box.DetectUrls = $true
+    $box.ScrollBars = 'Vertical'
+    $box.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10.5)
+    $box.Add_LinkClicked({ param($sender, $eventArgs) Start-Process $eventArgs.LinkText })
+    $helpForm.Controls.Add($box)
+
+    $closeButton = New-Button '关闭' 690 560 96 'Primary'
+    $closeButton.Anchor = 'Bottom,Right'
+    $closeButton.Add_Click({ $helpForm.Close() })
+    $helpForm.Controls.Add($closeButton)
+
+    $titleFont = New-Object System.Drawing.Font('Microsoft YaHei UI', 15, [System.Drawing.FontStyle]::Bold)
+    $sectionFont = New-Object System.Drawing.Font('Microsoft YaHei UI', 12, [System.Drawing.FontStyle]::Bold)
+    $bodyFont = New-Object System.Drawing.Font('Microsoft YaHei UI', 10.5)
+    $strongFont = New-Object System.Drawing.Font('Microsoft YaHei UI', 10.5, [System.Drawing.FontStyle]::Bold)
+    $smallFont = New-Object System.Drawing.Font('Microsoft YaHei UI', 9.5)
+    $blue = [System.Drawing.Color]::FromArgb(30, 64, 175)
+    $green = [System.Drawing.Color]::FromArgb(22, 101, 52)
+    $red = [System.Drawing.Color]::FromArgb(185, 28, 28)
+    $slate = [System.Drawing.Color]::FromArgb(51, 65, 85)
+    $muted = [System.Drawing.Color]::FromArgb(100, 116, 139)
+    $highlight = [System.Drawing.Color]::FromArgb(239, 246, 255)
+    $warningBack = [System.Drawing.Color]::FromArgb(254, 242, 242)
+
+    Add-HelpRichLine -Box $box -Text 'Codex 历史记录同步' -Font $titleFont -Color $blue
+    Add-HelpRichLine -Box $box -Text "版本 $script:AppVersion    作者 $script:AppAuthor    $script:GitHubUrl" -Font $smallFont -Color $muted
+    Add-HelpRichLine -Box $box -Text ''
+    Add-HelpRichLine -Box $box -Text $clipboardNote -Font $strongFont -Color $green -BackColor $highlight
+    Add-HelpRichLine -Box $box -Text ''
+
+    Add-HelpRichLine -Box $box -Text '重点概念' -Font $sectionFont -Color $blue
+    Add-HelpRichLine -Box $box -Text 'Codex源账号 / Codex目标账号：历史记录数据库里的 model_provider 桶，用于迁移聊天记录。' -Font $strongFont -Color $slate -BackColor $highlight
+    Add-HelpRichLine -Box $box -Text 'cc-switch供应商：从终端启动 Codex 时使用的 cc-switch 节点，和上面的历史记录账号不是同一个概念。' -Font $strongFont -Color $slate -BackColor $highlight
+    Add-HelpRichLine -Box $box -Text ''
+
+    Add-HelpRichLine -Box $box -Text '历史记录目录' -Font $sectionFont -Color $blue
+    Add-HelpRichBlock -Box $box -Text (Get-CodexHomeHelpText) -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text ''
+
+    Add-HelpRichLine -Box $box -Text 'cc-switch.db 配置' -Font $sectionFont -Color $blue
+    Add-HelpRichBlock -Box $box -Text (Get-CcSwitchHomeHelpText) -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text '点击【加载cc-switch.db配置】选择包含 cc-switch.db 的目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点。' -Font $strongFont -Color $green -BackColor $highlight
+    Add-HelpRichLine -Box $box -Text ''
+
+    Add-HelpRichLine -Box $box -Text '从终端启动' -Font $sectionFont -Color $blue
+    Add-HelpRichLine -Box $box -Text '- 不勾选记录：在当前目录创建新对话。' -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text '- 勾选【按勾选加载聊天】且只勾选一条记录：自动执行 codex resume <线程 ID>。' -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text '- 勾选多条记录：会提示只保留一条。' -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text '- 勾选【PowerShell启动】时优先用 PowerShell；取消勾选时优先用 CMD。' -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text ''
+
+    Add-HelpRichLine -Box $box -Text '配置与更新' -Font $sectionFont -Color $blue
+    Add-HelpRichLine -Box $box -Text '- 点击【软件设置】会打开 codex-history-sync-config.json；保存后软件自动刷新。' -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text '- 点击【检查更新】会从 GitHub main 分支检查新版并支持热更新。' -Font $bodyFont -Color $slate
+    Add-HelpRichLine -Box $box -Text '不要把 API key、token、auth.json、config.toml 或 state_5.sqlite 内容写进配置文件。' -Font $strongFont -Color $red -BackColor $warningBack
+
+    $box.SelectionStart = 0
+    $box.ScrollToCaret()
+    [void]$helpForm.ShowDialog($script:Form)
 }
 
 function Set-CodexHomeFromSelection {
@@ -2393,7 +2526,7 @@ function Get-CcSwitchProviderById {
     $safe = Quote-Sql $ProviderId
     $rows = Invoke-CcSwitchSqlJson "select id,name,settings_config from providers where app_type='codex' and id=$safe limit 1;"
     if ($rows.Count -eq 0) {
-        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【导入cc配置】选择包含 cc-switch.db 的目录，然后刷新。"
+        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【加载cc-switch.db配置】选择包含 cc-switch.db 的目录，然后刷新。"
     }
     return $rows[0]
 }
@@ -3149,7 +3282,7 @@ function Invoke-LaunchForProvider {
     $providerLabel = [string]$Combo.SelectedItem
     $providerId = Resolve-CcSwitchProviderId $providerLabel
     if ([string]::IsNullOrWhiteSpace($providerId)) {
-        throw '请先选择 cc-switch供应商。若下拉菜单为空，请点击【软件设置】填写 ccSwitchHome 后保存，或点击【导入cc配置】选择包含 cc-switch.db 的目录。'
+        throw '请先选择 cc-switch供应商。若下拉菜单为空，请点击【软件设置】填写 ccSwitchHome 后保存，或点击【加载cc-switch.db配置】选择包含 cc-switch.db 的目录。'
     }
     $loadCheckedRecord = $script:LoadCheckedRecordBox -and [bool]$script:LoadCheckedRecordBox.Checked
     $resumeSelection = if ($loadCheckedRecord) { Get-LaunchResumeSelection } else { $null }
@@ -3641,7 +3774,7 @@ $headerPanel.Controls.Add($headerTitle)
 $headerSubTitle = New-Object System.Windows.Forms.Label
 $headerSubTitle.Text = '本地记录迁移、节点启动和完成提醒'
 $headerSubTitle.Location = New-Object System.Drawing.Point(248, 34)
-$headerSubTitle.Size = New-Object System.Drawing.Size(360, 20)
+$headerSubTitle.Size = New-Object System.Drawing.Size(540, 20)
 $headerSubTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
 $headerPanel.Controls.Add($headerSubTitle)
 
@@ -3667,6 +3800,28 @@ $headerGitHub.ActiveLinkColor = [System.Drawing.Color]::FromArgb(29, 78, 216)
 $headerGitHub.VisitedLinkColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
 $headerGitHub.Add_LinkClicked({ Start-Process $script:GitHubUrl })
 $headerPanel.Controls.Add($headerGitHub)
+
+$headerLanguageSeparator = New-Object System.Windows.Forms.Label
+$headerLanguageSeparator.Text = '|'
+$headerLanguageSeparator.Location = New-Object System.Drawing.Point(1236, 20)
+$headerLanguageSeparator.Size = New-Object System.Drawing.Size(14, 22)
+$headerLanguageSeparator.Anchor = 'Top,Right'
+$headerLanguageSeparator.TextAlign = 'MiddleCenter'
+$headerLanguageSeparator.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$headerLanguageSeparator.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+$headerPanel.Controls.Add($headerLanguageSeparator)
+
+$headerLanguageLink = New-Object System.Windows.Forms.LinkLabel
+$headerLanguageLink.Text = 'English'
+$headerLanguageLink.Location = New-Object System.Drawing.Point(1254, 20)
+$headerLanguageLink.Size = New-Object System.Drawing.Size(62, 22)
+$headerLanguageLink.Anchor = 'Top,Right'
+$headerLanguageLink.TextAlign = 'MiddleLeft'
+$headerLanguageLink.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$headerLanguageLink.LinkColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$headerLanguageLink.ActiveLinkColor = [System.Drawing.Color]::FromArgb(29, 78, 216)
+$headerLanguageLink.VisitedLinkColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$headerPanel.Controls.Add($headerLanguageLink)
 
 $historyGroup = New-GroupBox '历史筛选' 12 70 508 86
 $script:Form.Controls.Add($historyGroup)
@@ -3729,7 +3884,7 @@ $script:Form.Controls.Add($pathGroup)
 $selectCodexHomeButton = New-Button '增加聊天记录' 14 24 118
 $openRecordFolderButton = New-Button '打开聊天目录' 142 24 118 'Soft'
 $openCodexFolderButton = New-Button 'codex目录' 270 24 112
-$selectCcSwitchHomeButton = New-Button '导入cc配置' 14 54 154
+$selectCcSwitchHomeButton = New-Button '加载cc-switch.db配置' 14 54 190
 $openConfigButton = New-Button '软件设置' 178 54 112 'Soft'
 $pathGroup.Controls.Add($selectCodexHomeButton)
 $pathGroup.Controls.Add($openRecordFolderButton)
@@ -3773,15 +3928,8 @@ $supportGroup = New-GroupBox '帮助与更新' 904 166 226 58
 $script:Form.Controls.Add($supportGroup)
 $helpButton = New-Button '帮助' 14 22 86 'Soft'
 $updateButton = New-Button '检查更新' 110 22 96
-$languageLabel = New-Label '语言' 220 24 42
-$script:LanguageCombo = New-Object System.Windows.Forms.ComboBox
-$script:LanguageCombo.DropDownStyle = 'DropDownList'
-$script:LanguageCombo.Location = New-Object System.Drawing.Point(266, 24)
-$script:LanguageCombo.Size = New-Object System.Drawing.Size(88, 24)
 $supportGroup.Controls.Add($helpButton)
 $supportGroup.Controls.Add($updateButton)
-$supportGroup.Controls.Add($languageLabel)
-$supportGroup.Controls.Add($script:LanguageCombo)
 
 $script:Grid = New-Object System.Windows.Forms.DataGridView
 
@@ -3849,7 +3997,7 @@ $gridLaunchWithChatItem.Add_Click({
         }
     })
 [void]$script:GridContextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-$gridCloneCurrentItem = $script:GridContextMenu.Items.Add('同步至目标账号 [此条]')
+$gridCloneCurrentItem = $script:GridContextMenu.Items.Add('同步至目标账号（此条）')
 $gridCloneCurrentItem.Add_Click({
         try {
             Set-OnlyCurrentRowChecked
@@ -3859,7 +4007,7 @@ $gridCloneCurrentItem.Add_Click({
             Show-GuiError $_
         }
     })
-$gridCloneCheckedItem = $script:GridContextMenu.Items.Add('同步至目标账号 [勾选]')
+$gridCloneCheckedItem = $script:GridContextMenu.Items.Add('同步至目标账号（勾选）')
 $gridCloneCheckedItem.Add_Click({
         try {
             Invoke-CloneCheckedRowsToTarget
@@ -3868,7 +4016,7 @@ $gridCloneCheckedItem.Add_Click({
             Show-GuiError $_
         }
     })
-$gridSyncAllItem = $script:GridContextMenu.Items.Add('同步至目标账号 [所有]')
+$gridSyncAllItem = $script:GridContextMenu.Items.Add('同步至目标账号（所有）')
 $gridSyncAllItem.Add_Click({
         try {
             Invoke-SyncAllRowsToTarget
@@ -4007,6 +4155,16 @@ $updateButton.Add_Click({
         }
     })
 
+$headerLanguageLink.Add_LinkClicked({
+        try {
+            Toggle-UiLanguage
+            Save-AppState
+        }
+        catch {
+            Show-GuiError $_
+        }
+    })
+
 $refreshButton.Add_Click({
         Refresh-Providers
         Refresh-CwdOptions
@@ -4128,12 +4286,6 @@ $script:CodexProviderCombo.Add_SelectedIndexChanged({
             Save-AppState
         }
     })
-$script:LanguageCombo.Add_SelectedIndexChanged({
-        if (-not $script:SuppressThreadRefresh) {
-            Set-UiLanguage (Get-LanguageFromDisplayText ([string]$script:LanguageCombo.SelectedItem))
-            Save-AppState
-        }
-    })
 $script:IncludeArchivedBox.Add_CheckedChanged({
         if (-not $script:SuppressThreadRefresh) {
             Refresh-CwdOptions
@@ -4220,7 +4372,7 @@ else {
     Append-Log ("尚未加载 Codex 记录目录。请点击 ""增加聊天记录""。" + "`r`n`r`n" + (Get-CodexHomeHelpText))
 }
 if ([string]::IsNullOrWhiteSpace($script:CcSwitchDb)) {
-    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""导入cc配置""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
+    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""加载cc-switch.db配置""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
 }
 else {
     Append-Log "cc-switch 数据库：$script:CcSwitchDb"
