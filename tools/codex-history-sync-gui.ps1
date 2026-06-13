@@ -31,8 +31,8 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.14'
-$script:AppAuthor = 'zhuofupan'
+$script:AppVersion = '2026.06.13.15'
+$script:AppAuthor = 'Joff Pan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
 $script:ToolDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -280,7 +280,7 @@ $script:UiStrings = @{
         DirectoryFilter      = '目录筛选'
         DisplayLimit         = '显示条数'
         CcSwitchProvider     = 'cc-switch供应商'
-        Archived             = '归档'
+        Archived             = '显示归档'
         Refresh              = '刷新'
         SelectAll            = '全选'
         ClearSelection       = '清空'
@@ -314,9 +314,8 @@ $script:UiStrings = @{
         MenuCopyId           = '复制线程 ID'
         MenuCopyCwd          = '复制项目目录'
         MenuCopyTitle        = '复制聊天内容'
-        MenuCheck            = '勾选此记录'
-        MenuUncheck          = '取消勾选此记录'
         MenuCheckOnly        = '只勾选此记录'
+        MenuCheckExcept      = '除此条外均勾选'
         MenuLaunchTerminal   = '启动终端'
         MenuLaunchWithChat   = '启动终端（+聊天）'
         MenuSyncCurrent      = '同步至目标账号（此条）'
@@ -341,7 +340,7 @@ $script:UiStrings = @{
         DirectoryFilter      = 'Directory'
         DisplayLimit         = 'Rows'
         CcSwitchProvider     = 'cc-switch Provider'
-        Archived             = 'Archived'
+        Archived             = 'Show Archived'
         Refresh              = 'Refresh'
         SelectAll            = 'Select All'
         ClearSelection       = 'Clear'
@@ -375,9 +374,8 @@ $script:UiStrings = @{
         MenuCopyId           = 'Copy Thread ID'
         MenuCopyCwd          = 'Copy Project Directory'
         MenuCopyTitle        = 'Copy Chat Content'
-        MenuCheck            = 'Check This Row'
-        MenuUncheck          = 'Uncheck This Row'
         MenuCheckOnly        = 'Only Check This Row'
+        MenuCheckExcept      = 'Check All Except This'
         MenuLaunchTerminal   = 'Launch Terminal'
         MenuLaunchWithChat   = 'Launch Terminal (+Chat)'
         MenuSyncCurrent      = 'Sync to Target (This)'
@@ -1127,9 +1125,8 @@ function Apply-UiLanguage {
     Set-ControlText $gridCopyIdItem 'MenuCopyId'
     Set-ControlText $gridCopyCwdItem 'MenuCopyCwd'
     Set-ControlText $gridCopyTitleItem 'MenuCopyTitle'
-    Set-ControlText $gridCheckItem 'MenuCheck'
-    Set-ControlText $gridUncheckItem 'MenuUncheck'
     Set-ControlText $gridCheckOnlyItem 'MenuCheckOnly'
+    Set-ControlText $gridCheckExceptItem 'MenuCheckExcept'
     Set-ControlText $gridLaunchTerminalItem 'MenuLaunchTerminal'
     Set-ControlText $gridLaunchWithChatItem 'MenuLaunchWithChat'
     Set-ControlText $gridCloneCurrentItem 'MenuSyncCurrent'
@@ -3413,6 +3410,18 @@ function Set-OnlyCurrentRowChecked {
     Set-CurrentRowChecked $true
 }
 
+function Set-AllRowsExceptCurrentChecked {
+    [void]$script:Grid.EndEdit()
+    $currentRow = Get-CurrentGridRow
+    $selectedColumn = Get-GridColumnByProperty 'Selected'
+    if (-not $currentRow -or -not $selectedColumn) { return }
+
+    foreach ($row in $script:Grid.Rows) {
+        if ($row.IsNewRow) { continue }
+        $row.Cells[$selectedColumn.Index].Value = -not [object]::ReferenceEquals($row, $currentRow)
+    }
+}
+
 function Copy-GridValueToClipboard {
     param(
         [Parameter(Mandatory)][string]$ColumnName,
@@ -3875,7 +3884,7 @@ $script:LimitBox.Maximum = 1000
 $script:LimitBox.Value = 50
 $historyGroup.Controls.Add($script:LimitBox)
 $script:IncludeArchivedBox = New-Object System.Windows.Forms.CheckBox
-$script:IncludeArchivedBox.Text = '归档'
+$script:IncludeArchivedBox.Text = '显示归档'
 $script:IncludeArchivedBox.Location = New-Object System.Drawing.Point(446, 55)
 $script:IncludeArchivedBox.Size = New-Object System.Drawing.Size(48, 22)
 $historyGroup.Controls.Add($script:IncludeArchivedBox)
@@ -4072,12 +4081,10 @@ $gridCopyCwdItem.Add_Click({ Copy-GridValueToClipboard -ColumnName 'Cwd' -Label 
 $gridCopyTitleItem = $script:GridContextMenu.Items.Add('复制聊天内容')
 $gridCopyTitleItem.Add_Click({ Copy-GridValueToClipboard -ColumnName 'Title' -Label (Get-UiText 'GridTitle') })
 [void]$script:GridContextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-$gridCheckItem = $script:GridContextMenu.Items.Add('勾选此记录')
-$gridCheckItem.Add_Click({ Set-CurrentRowChecked $true })
-$gridUncheckItem = $script:GridContextMenu.Items.Add('取消勾选此记录')
-$gridUncheckItem.Add_Click({ Set-CurrentRowChecked $false })
 $gridCheckOnlyItem = $script:GridContextMenu.Items.Add('只勾选此记录')
 $gridCheckOnlyItem.Add_Click({ Set-OnlyCurrentRowChecked })
+$gridCheckExceptItem = $script:GridContextMenu.Items.Add('除此条外均勾选')
+$gridCheckExceptItem.Add_Click({ Set-AllRowsExceptCurrentChecked })
 $script:Grid.ContextMenuStrip = $script:GridContextMenu
 $script:GridContextMenu.Add_Opening({
         param($Sender, $EventArgs)
