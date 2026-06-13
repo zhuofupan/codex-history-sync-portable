@@ -31,7 +31,7 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.8'
+$script:AppVersion = '2026.06.13.9'
 $script:AppAuthor = 'zhuofupan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
@@ -204,7 +204,7 @@ function Get-CcSwitchHomeHelpText {
 如果自动加载不到新增账号：
 - 先在 cc-switch 里确认已经新增并保存 Codex 节点
 - 回到本工具点击【刷新】
-- 仍然没有时，点击【增加节点目录】，选择包含 cc-switch.db 的目录
+- 仍然没有时，点击【增加cc配置】，选择包含 cc-switch.db 的目录
 
 找不到时可以用 Everything 搜索 cc-switch.db，然后选择这个文件所在的目录。
 "@
@@ -852,7 +852,7 @@ function Assert-CodexHomeReady {
     if (Test-CodexHomeReady) { return }
 
     $reason = if ($script:CodexHomeResolveError) { $script:CodexHomeResolveError } else { '尚未加载 Codex 历史记录目录。' }
-    throw ($reason + "`r`n`r`n请点击 ""增加记录目录""，选择包含 state_5.sqlite 的 .codex 目录。")
+    throw ($reason + "`r`n`r`n请点击 ""增加聊天记录""，选择包含 state_5.sqlite 的 .codex 目录。")
 }
 
 function Get-AppHelpText {
@@ -878,15 +878,15 @@ $(Get-CodexHomeHelpText)
 $(Get-CcSwitchHomeHelpText)
 
 【配置文件】
-- 点击【打开软件配置】会打开软件根目录下的 codex-history-sync-config.json。
+- 点击【软件设置】会打开软件根目录下的 codex-history-sync-config.json。
 - 第一次打开时会自动生成配置文件，并尽量写入已检测到的 Codex 记录目录、cc-switch 目录和账号列表。
 - 保存配置文件后，软件会自动重新读取并刷新界面。
 - 配置文件只写本机路径和默认选择，不要写 API key、token 或 auth.json 内容。
 
 【从终端启动】
 - 不勾选记录：在当前目录创建新对话。
-- 勾选【勾选加载记录】且只勾选一条记录：自动执行等价于 codex resume <线程 ID> 的恢复。
-- 取消【勾选加载记录】：忽略列表最左侧勾选，在当前目录创建新对话。
+- 勾选【按勾选加载记录】且只勾选一条记录：自动执行等价于 codex resume <线程 ID> 的恢复。
+- 取消【按勾选加载记录】：忽略列表最左侧勾选，在当前目录创建新对话。
 - 勾选多条记录：会提示只保留一条。
 - 勾选【PowerShell启动】时优先用 PowerShell，否则优先用 CMD；找不到所选终端时会自动退回另一种。
 
@@ -1224,7 +1224,7 @@ function Import-AppConfig {
     if (-not $Silent) {
         [System.Windows.Forms.MessageBox]::Show(
             "配置已加载。`r`n`r`n$Path",
-            '打开软件配置',
+            '软件设置',
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
         ) | Out-Null
@@ -1303,7 +1303,7 @@ function New-AppConfigObject {
 
     return [pscustomobject][ordered]@{
         _help                      = [pscustomobject][ordered]@{
-            howToUse                  = '这个文件是本机配置。点击软件里的【打开软件配置】会打开它；保存后软件会自动刷新。JSON 不支持注释，所以说明文字放在 _help 里。'
+            howToUse                  = '这个文件是本机配置。点击软件里的【软件设置】会打开它；保存后软件会自动刷新。JSON 不支持注释，所以说明文字放在 _help 里。'
             codexHome                 = 'Codex 历史记录目录，必须包含 state_5.sqlite 和 sessions 文件夹。常见值：C:\Users\你的用户名\.codex。'
             ccSwitchHome              = 'cc-switch 节点目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。'
             codexExe                  = 'codex.exe 的完整路径；如果 PATH 已经能找到 codex.exe，可以留空。'
@@ -1398,7 +1398,7 @@ function Sync-AppConfigFileWithDetectedInfo {
 function Open-AppConfigFile {
     Sync-AppConfigFileWithDetectedInfo -CreateIfMissing
     Start-Process -FilePath notepad.exe -ArgumentList @($script:AutoConfigPath) | Out-Null
-    Append-Log "已打开软件配置文件：$script:AutoConfigPath。保存后软件会自动刷新。"
+    Append-Log "已打开软件设置文件：$script:AutoConfigPath。保存后软件会自动刷新。"
 }
 
 function Start-AppConfigWatcher {
@@ -1728,7 +1728,7 @@ function Get-CodexExecutable {
     $fallback = Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin\codex.exe'
     if (Test-Path -LiteralPath $fallback) { return $fallback }
 
-    throw "找不到 codex.exe。请确认 Codex CLI 已安装并加入 PATH；或点击【打开软件配置】，填写 codexExe 后保存。配置文件：$script:AutoConfigPath"
+    throw "找不到 codex.exe。请确认 Codex CLI 已安装并加入 PATH；或点击【软件设置】，填写 codexExe 后保存。配置文件：$script:AutoConfigPath"
 }
 
 function ConvertTo-PowerShellSingleQuotedString {
@@ -1951,7 +1951,7 @@ function Get-CcSwitchProviderById {
     $safe = Quote-Sql $ProviderId
     $rows = Invoke-CcSwitchSqlJson "select id,name,settings_config from providers where app_type='codex' and id=$safe limit 1;"
     if ($rows.Count -eq 0) {
-        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【增加节点目录】选择包含 cc-switch.db 的目录，然后刷新。"
+        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【增加cc配置】选择包含 cc-switch.db 的目录，然后刷新。"
     }
     return $rows[0]
 }
@@ -2322,7 +2322,7 @@ function Repair-NodeReplMcpConfig {
             }
         }
         catch {
-            Add-CodexConfigFixMessage "node_repl MCP 的 CODEX_CLI_PATH 已失效，但暂未找到 codex.exe；如仍报错，请在【打开软件配置】里填写 codexExe。"
+            Add-CodexConfigFixMessage "node_repl MCP 的 CODEX_CLI_PATH 已失效，但暂未找到 codex.exe；如仍报错，请在【软件设置】里填写 codexExe。"
         }
     }
 
@@ -2707,7 +2707,7 @@ function Invoke-LaunchForProvider {
     $providerLabel = [string]$Combo.SelectedItem
     $providerId = Resolve-CcSwitchProviderId $providerLabel
     if ([string]::IsNullOrWhiteSpace($providerId)) {
-        throw '请先选择 cc switch节点。若下拉菜单为空，请点击【打开软件配置】填写 ccSwitchHome 后保存，或点击【增加节点目录】选择包含 cc-switch.db 的目录。'
+        throw '请先选择 cc switch节点。若下拉菜单为空，请点击【软件设置】填写 ccSwitchHome 后保存，或点击【增加cc配置】选择包含 cc-switch.db 的目录。'
     }
     $loadCheckedRecord = $script:LoadCheckedRecordBox -and [bool]$script:LoadCheckedRecordBox.Checked
     $resumeSelection = if ($loadCheckedRecord) { Get-LaunchResumeSelection } else { $null }
@@ -3070,32 +3070,45 @@ $headerMeta.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $headerMeta.ForeColor = [System.Drawing.Color]::FromArgb(71, 85, 105)
 $headerPanel.Controls.Add($headerMeta)
 
-$historyGroup = New-GroupBox '历史筛选' 12 70 500 86
+$headerGitHub = New-Object System.Windows.Forms.LinkLabel
+$headerGitHub.Text = "GitHub：$script:GitHubRepo"
+$headerGitHub.Location = New-Object System.Drawing.Point(720, 36)
+$headerGitHub.Size = New-Object System.Drawing.Size(554, 20)
+$headerGitHub.Anchor = 'Top,Right'
+$headerGitHub.TextAlign = 'MiddleRight'
+$headerGitHub.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$headerGitHub.LinkColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$headerGitHub.ActiveLinkColor = [System.Drawing.Color]::FromArgb(29, 78, 216)
+$headerGitHub.VisitedLinkColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$headerGitHub.Add_LinkClicked({ Start-Process $script:GitHubUrl })
+$headerPanel.Controls.Add($headerGitHub)
+
+$historyGroup = New-GroupBox '历史筛选' 12 70 508 86
 $script:Form.Controls.Add($historyGroup)
-$historyGroup.Controls.Add((New-Label '源账号' 14 24 50))
+$historyGroup.Controls.Add((New-Label 'Codex源账号' 14 24 76))
 $script:SourceCombo = New-Object System.Windows.Forms.ComboBox
 $script:SourceCombo.DropDownStyle = 'DropDownList'
-$script:SourceCombo.Location = New-Object System.Drawing.Point(68, 24)
+$script:SourceCombo.Location = New-Object System.Drawing.Point(92, 24)
 $script:SourceCombo.Size = New-Object System.Drawing.Size(118, 24)
 $historyGroup.Controls.Add($script:SourceCombo)
-$historyGroup.Controls.Add((New-Label '目标账号' 196 24 62))
+$historyGroup.Controls.Add((New-Label 'Codex目标账号' 218 24 86))
 $script:TargetCombo = New-Object System.Windows.Forms.ComboBox
 $script:TargetCombo.DropDownStyle = 'DropDownList'
-$script:TargetCombo.Location = New-Object System.Drawing.Point(262, 24)
+$script:TargetCombo.Location = New-Object System.Drawing.Point(306, 24)
 $script:TargetCombo.Size = New-Object System.Drawing.Size(118, 24)
 $historyGroup.Controls.Add($script:TargetCombo)
-$swapButton = New-Button '交换' 390 22 58 'Soft'
+$swapButton = New-Button '交换' 434 22 58 'Soft'
 $historyGroup.Controls.Add($swapButton)
-$historyGroup.Controls.Add((New-Label '目录' 14 54 42))
+$historyGroup.Controls.Add((New-Label '目录筛选' 14 54 66))
 $script:CwdCombo = New-Object System.Windows.Forms.ComboBox
 $script:CwdCombo.DropDownStyle = 'DropDownList'
-$script:CwdCombo.Location = New-Object System.Drawing.Point(68, 54)
-$script:CwdCombo.Size = New-Object System.Drawing.Size(262, 24)
+$script:CwdCombo.Location = New-Object System.Drawing.Point(82, 54)
+$script:CwdCombo.Size = New-Object System.Drawing.Size(222, 24)
 $script:CwdCombo.DropDownWidth = 900
 $historyGroup.Controls.Add($script:CwdCombo)
-$historyGroup.Controls.Add((New-Label '条数' 342 54 42))
+$historyGroup.Controls.Add((New-Label '显示条数' 314 54 64))
 $script:LimitBox = New-Object System.Windows.Forms.NumericUpDown
-$script:LimitBox.Location = New-Object System.Drawing.Point(386, 54)
+$script:LimitBox.Location = New-Object System.Drawing.Point(380, 54)
 $script:LimitBox.Size = New-Object System.Drawing.Size(58, 24)
 $script:LimitBox.Minimum = 1
 $script:LimitBox.Maximum = 1000
@@ -3103,11 +3116,11 @@ $script:LimitBox.Value = 50
 $historyGroup.Controls.Add($script:LimitBox)
 $script:IncludeArchivedBox = New-Object System.Windows.Forms.CheckBox
 $script:IncludeArchivedBox.Text = '归档'
-$script:IncludeArchivedBox.Location = New-Object System.Drawing.Point(448, 55)
+$script:IncludeArchivedBox.Location = New-Object System.Drawing.Point(446, 55)
 $script:IncludeArchivedBox.Size = New-Object System.Drawing.Size(48, 22)
 $historyGroup.Controls.Add($script:IncludeArchivedBox)
 
-$syncGroup = New-GroupBox '同步操作' 524 70 360 86
+$syncGroup = New-GroupBox '同步操作' 532 70 360 86
 $script:Form.Controls.Add($syncGroup)
 $refreshButton = New-Button '刷新' 14 24 62 'Soft'
 $selectAllButton = New-Button '全选' 84 24 58
@@ -3122,51 +3135,51 @@ $syncGroup.Controls.Add($cloneButton)
 $syncGroup.Controls.Add($syncButton)
 $syncGroup.Controls.Add($mirrorButton)
 
-$pathGroup = New-GroupBox '目录与配置' 896 70 396 86
+$pathGroup = New-GroupBox '目录与配置' 904 70 388 86
 $script:Form.Controls.Add($pathGroup)
-$selectCodexHomeButton = New-Button '增加记录目录' 14 24 110
-$openRecordFolderButton = New-Button '打开聊天目录' 132 24 104 'Soft'
-$openCodexFolderButton = New-Button '打开.codex' 244 24 96
-$selectCcSwitchHomeButton = New-Button '增加节点目录' 14 54 110
-$openConfigButton = New-Button '打开软件配置' 132 54 110 'Soft'
+$selectCodexHomeButton = New-Button '增加聊天记录' 14 24 112
+$openRecordFolderButton = New-Button '打开聊天目录' 136 24 112 'Soft'
+$openCodexFolderButton = New-Button 'codex目录' 258 24 102
+$selectCcSwitchHomeButton = New-Button '增加cc配置' 14 54 112
+$openConfigButton = New-Button '软件设置' 136 54 112 'Soft'
 $pathGroup.Controls.Add($selectCodexHomeButton)
 $pathGroup.Controls.Add($openRecordFolderButton)
 $pathGroup.Controls.Add($openCodexFolderButton)
 $pathGroup.Controls.Add($selectCcSwitchHomeButton)
 $pathGroup.Controls.Add($openConfigButton)
 
-$launchGroup = New-GroupBox '启动与提醒' 12 166 768 58
+$launchGroup = New-GroupBox '启动与提醒' 12 166 880 58
 $script:Form.Controls.Add($launchGroup)
-$launchGroup.Controls.Add((New-Label 'cc switch节点' 14 24 86))
+$launchGroup.Controls.Add((New-Label 'cc switch节点' 14 24 92))
 $script:CodexProviderCombo = New-Object System.Windows.Forms.ComboBox
 $script:CodexProviderCombo.DropDownStyle = 'DropDownList'
-$script:CodexProviderCombo.Location = New-Object System.Drawing.Point(104, 24)
-$script:CodexProviderCombo.Size = New-Object System.Drawing.Size(180, 24)
+$script:CodexProviderCombo.Location = New-Object System.Drawing.Point(110, 24)
+$script:CodexProviderCombo.Size = New-Object System.Drawing.Size(170, 24)
 $launchGroup.Controls.Add($script:CodexProviderCombo)
-$openCodexButton = New-Button '从终端启动' 294 22 104 'Primary'
+$openCodexButton = New-Button '从终端启动' 292 22 110 'Primary'
 $launchGroup.Controls.Add($openCodexButton)
 $script:LoadCheckedRecordBox = New-Object System.Windows.Forms.CheckBox
-$script:LoadCheckedRecordBox.Text = '勾选加载记录'
-$script:LoadCheckedRecordBox.Location = New-Object System.Drawing.Point(408, 25)
-$script:LoadCheckedRecordBox.Size = New-Object System.Drawing.Size(112, 22)
+$script:LoadCheckedRecordBox.Text = '按勾选加载记录'
+$script:LoadCheckedRecordBox.Location = New-Object System.Drawing.Point(414, 25)
+$script:LoadCheckedRecordBox.Size = New-Object System.Drawing.Size(128, 22)
 $script:LoadCheckedRecordBox.Checked = $true
 $launchGroup.Controls.Add($script:LoadCheckedRecordBox)
 $script:UsePowerShellLaunchBox = New-Object System.Windows.Forms.CheckBox
 $script:UsePowerShellLaunchBox.Text = 'PowerShell启动'
-$script:UsePowerShellLaunchBox.Location = New-Object System.Drawing.Point(522, 25)
-$script:UsePowerShellLaunchBox.Size = New-Object System.Drawing.Size(106, 22)
+$script:UsePowerShellLaunchBox.Location = New-Object System.Drawing.Point(550, 25)
+$script:UsePowerShellLaunchBox.Size = New-Object System.Drawing.Size(118, 22)
 $script:UsePowerShellLaunchBox.Checked = $false
 $launchGroup.Controls.Add($script:UsePowerShellLaunchBox)
 $script:TurnEndedNotifyBox = New-Object System.Windows.Forms.CheckBox
 $script:TurnEndedNotifyBox.Text = '完成弹窗'
-$script:TurnEndedNotifyBox.Location = New-Object System.Drawing.Point(632, 25)
+$script:TurnEndedNotifyBox.Location = New-Object System.Drawing.Point(676, 25)
 $script:TurnEndedNotifyBox.Size = New-Object System.Drawing.Size(82, 22)
 $script:TurnEndedNotifyBox.Checked = $true
 $launchGroup.Controls.Add($script:TurnEndedNotifyBox)
-$testNotifyButton = New-Button '测试' 718 22 42
+$testNotifyButton = New-Button '测试弹窗' 764 22 94
 $launchGroup.Controls.Add($testNotifyButton)
 
-$supportGroup = New-GroupBox '帮助与更新' 792 166 226 58
+$supportGroup = New-GroupBox '帮助与更新' 904 166 226 58
 $script:Form.Controls.Add($supportGroup)
 $helpButton = New-Button '帮助' 14 22 86 'Soft'
 $updateButton = New-Button '检查更新' 110 22 96
@@ -3494,10 +3507,10 @@ if (Test-CodexHomeReady) {
     Append-Log "Codex 记录目录：$CodexHome"
 }
 else {
-    Append-Log ("尚未加载 Codex 记录目录。请点击 ""增加记录目录""。" + "`r`n`r`n" + (Get-CodexHomeHelpText))
+    Append-Log ("尚未加载 Codex 记录目录。请点击 ""增加聊天记录""。" + "`r`n`r`n" + (Get-CodexHomeHelpText))
 }
 if ([string]::IsNullOrWhiteSpace($script:CcSwitchDb)) {
-    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""增加节点目录""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
+    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""增加cc配置""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
 }
 else {
     Append-Log "cc-switch 数据库：$script:CcSwitchDb"

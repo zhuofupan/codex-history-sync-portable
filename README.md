@@ -94,16 +94,16 @@ The GUI opens with these main controls:
 | `同步全部` | Copy all listed source rows to the target provider |
 | `双向同步` | Sync both directions between the selected providers |
 | `cc switch节点` | cc-switch Codex node used by `从终端启动` |
-| `从终端启动` | Open an elevated terminal; the first terminal line shows `[管理员模式]` or `[非管理员]`; start a new chat, or resume the one checked thread when `勾选加载记录` is enabled |
-| `勾选加载记录` | When enabled, one checked row launches with `codex resume <thread-id>`; when disabled, checked rows are ignored and a new chat starts in the selected directory |
+| `从终端启动` | Open an elevated terminal; the first terminal line shows `[管理员模式]` or `[非管理员]`; start a new chat, or resume the one checked thread when `按勾选加载记录` is enabled |
+| `按勾选加载记录` | When enabled, one checked row launches with `codex resume <thread-id>`; when disabled, checked rows are ignored and a new chat starts in the selected directory |
 | `PowerShell启动` | Prefer PowerShell when checked; prefer CMD when unchecked; fall back automatically if the preferred terminal is unavailable |
-| `打开软件配置` | Open root `codex-history-sync-config.json`; the GUI creates it if missing and reloads it after saves |
+| `软件设置` | Open root `codex-history-sync-config.json`; the GUI creates it if missing and reloads it after saves |
 | `帮助` | Show path/account/start/update guidance and copy Everything search terms |
 | `检查更新` | Check GitHub main for a newer version and apply a one-click hot update |
-| `增加记录目录` | Manually load a `.codex` directory |
+| `增加聊天记录` | Manually load a `.codex` directory |
 | `打开聊天目录` | Open the selected chat's rollout folder; if no chat is selected, open `.codex\sessions` |
-| `打开.codex` | Open the current Codex history root directory |
-| `增加节点目录` | Manually load the cc-switch node directory containing `cc-switch.db` |
+| `codex目录` | Open the current Codex history root directory |
+| `增加cc配置` | Manually load the cc-switch node directory containing `cc-switch.db` |
 
 ## CLI Usage
 
@@ -155,7 +155,7 @@ If you select `sessions` or a nested sessions folder by mistake, the GUI walks u
 
 ## Config File
 
-If a new user sees `请先选择账号` or `找不到 codex.exe`, click `打开软件配置`, fill the paths described in `_help`, then save the file.
+If a new user sees `请先选择账号` or `找不到 codex.exe`, click `软件设置`, fill the paths described in `_help`, then save the file.
 
 1. The GUI creates root `codex-history-sync-config.json` automatically.
 2. If Codex history, cc-switch nodes, or Codex CLI are detected, the config file is filled with those paths and account lists.
@@ -193,7 +193,7 @@ The tool searches for `cc-switch.db` in these places:
 4. `%LOCALAPPDATA%\cc-switch\cc-switch.db`.
 5. `%APPDATA%\cc-switch\cc-switch.db`.
 
-If automatic discovery fails, use `增加节点目录` and select the folder containing `cc-switch.db`.
+If automatic discovery fails, use `增加cc配置` and select the folder containing `cc-switch.db`.
 
 ## Completion Popup
 
@@ -264,7 +264,7 @@ This project is useful when:
 
 ## Troubleshooting
 
-If no Codex records appear, click `增加记录目录` and choose the folder containing `state_5.sqlite`.
+If no Codex records appear, click `增加聊天记录` and choose the folder containing `state_5.sqlite`.
 
 If the provider list looks incomplete, click `刷新` after opening Codex once with the provider you expect.
 
@@ -272,7 +272,7 @@ If a sync fails because a rollout file is being written, close or pause active C
 
 If Codex startup shows `MCP client for node_repl failed to start`, the usual cause is a stale Codex Desktop runtime path after an app update. When the GUI switches nodes or enables completion popups, it automatically repairs the `node_repl.exe`, `node.exe`, `node_modules`, and `codex.exe` paths in `config.toml`.
 
-If cc-switch nodes do not appear, click `增加节点目录` and choose the directory that contains `cc-switch.db`.
+If cc-switch nodes do not appear, click `增加cc配置` and choose the directory that contains `cc-switch.db`.
 
 ## Development Notes
 
