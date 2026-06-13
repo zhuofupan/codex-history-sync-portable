@@ -1,8 +1,8 @@
 {
   "_help": {
     "howToUse": "这是配置模板。正常使用时请在 GUI 点击【软件设置】，软件会自动生成 codex-history-sync-config.json 并尽量填入已检测到的路径和账号。JSON 不支持注释，所以说明文字放在 _help 里。",
-    "codexHome": "Codex 历史记录目录，必须包含 state_5.sqlite 和 sessions 文件夹。常见值：C:\\Users\\你的用户名\\.codex。",
-    "ccSwitchHome": "cc-switch 配置目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。GUI 按钮【加载cc-switch.db配置】就是选择这个目录。",
+    "codexHome": "加载codex账号时选择的 .codex 文件夹，必须包含 state_5.sqlite 和 sessions 文件夹。常见值：C:\\Users\\你的用户名\\.codex。",
+    "ccSwitchHome": "账号配置文件目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。GUI 按钮【账号配置文件】就是选择这个目录。",
     "codexExe": "codex.exe 的完整路径；如果 PATH 已经能找到 codex.exe，可以留空。",
     "defaultSourceProvider": "Codex 历史记录里的 model_provider 桶，例如 openai、custom、rightcode。可参考自动生成配置中的 knownCodexHistoryProviders。",
     "defaultTargetProvider": "同步目标 model_provider 桶。",
@@ -12,7 +12,7 @@
     "uiLanguage": "界面语言。zh-CN 表示中文，en-US 表示英文。",
     "security": "不要在这里写 API key、token、auth.json、config.toml 或 state_5.sqlite 内容。"
   },
-  "version": "2026.06.13.13",
+  "version": "2026.06.13.14",
   "codexHome": "",
   "ccSwitchHome": "",
   "codexExe": "",

@@ -31,7 +31,7 @@ public static class CodexHistorySyncWindow {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppVersion = '2026.06.13.13'
+$script:AppVersion = '2026.06.13.14'
 $script:AppAuthor = 'zhuofupan'
 $script:GitHubRepo = 'zhuofupan/codex-history-sync-portable'
 $script:GitHubUrl = "https://github.com/$script:GitHubRepo"
@@ -51,6 +51,7 @@ $script:ConfigReloadTimer = $null
 $script:ConfigReloadInProgress = $false
 $script:DisableCodexAppsOnFast = $true
 $script:GuiInstanceMutex = $null
+$script:HelpForm = $null
 
 function Join-OptionalPath {
     param(
@@ -122,7 +123,7 @@ function Resolve-CodexHome {
 
 function Get-CodexHomeHelpText {
     return @"
-请选择 Codex 历史记录目录，也就是包含 state_5.sqlite 的 .codex 文件夹。
+点击【加载codex账号】时，请选择包含 state_5.sqlite 的 .codex 文件夹。
 
 常见位置：
 1. C:\Users\<你的用户名>\.codex
@@ -134,7 +135,7 @@ function Get-CodexHomeHelpText {
 - 通常还会有 sessions 文件夹
 - sessions 下面会按年份、月份保存 rollout-*.jsonl 聊天记录文件
 
-找不到时可以用 Everything 搜索 state_5.sqlite；它所在的目录就是要加载的记录目录。
+找不到时可以用 Everything 搜索 state_5.sqlite；它所在的目录就是要加载的 codex 账号目录。
 
 如果你误选了 sessions 或 sessions 下的子目录，工具会自动向上查找包含 state_5.sqlite 的父目录。
 "@
@@ -204,7 +205,7 @@ function Get-CcSwitchHomeHelpText {
 如果自动加载不到新增账号：
 - 先在 cc-switch 里确认已经新增并保存 Codex 节点
 - 回到本工具点击【刷新】
-- 仍然没有时，点击【加载cc-switch.db配置】，选择包含 cc-switch.db 的目录
+- 仍然没有时，点击【账号配置文件】，选择包含 cc-switch.db 的目录
 
 找不到时可以用 Everything 搜索 cc-switch.db，然后选择这个文件所在的目录。
 "@
@@ -287,10 +288,10 @@ $script:UiStrings = @{
         SyncAll              = '同步全部'
         Mirror               = '双向同步'
         Swap                 = '交换'
-        AddHistory           = '增加聊天记录'
-        OpenChatDir          = '打开聊天目录'
+        AddHistory           = '加载codex账号'
+        OpenChatDir          = '打开聊天内容'
         CodexDir             = 'codex目录'
-        ImportCcConfig       = '加载cc-switch.db配置'
+        ImportCcConfig       = '账号配置文件'
         Settings             = '软件设置'
         LaunchTerminal       = '从终端启动'
         LoadCheckedRecord    = '按勾选加载聊天'
@@ -307,7 +308,7 @@ $script:UiStrings = @{
         GridCwd              = '项目目录'
         GridTitle            = '聊天内容'
         GridRollout          = '记录文件'
-        MenuOpenChatDir      = '打开聊天目录'
+        MenuOpenChatDir      = '打开聊天内容'
         MenuOpenWorkspace    = '打开项目目录'
         MenuCopyCell         = '复制当前单元格'
         MenuCopyId           = '复制线程 ID'
@@ -348,10 +349,10 @@ $script:UiStrings = @{
         SyncAll              = 'Sync All'
         Mirror               = 'Two-way Sync'
         Swap                 = 'Swap'
-        AddHistory           = 'Add History'
-        OpenChatDir          = 'Open Chat Dir'
+        AddHistory           = 'Load Codex Account'
+        OpenChatDir          = 'Open Chat Content'
         CodexDir             = 'Codex Dir'
-        ImportCcConfig       = 'Load cc-switch.db Config'
+        ImportCcConfig       = 'Account Config File'
         Settings             = 'Settings'
         LaunchTerminal       = 'Launch Terminal'
         LoadCheckedRecord    = 'Load Checked Chat'
@@ -368,7 +369,7 @@ $script:UiStrings = @{
         GridCwd              = 'Project Dir'
         GridTitle            = 'Chat Content'
         GridRollout          = 'Record File'
-        MenuOpenChatDir      = 'Open Chat Directory'
+        MenuOpenChatDir      = 'Open Chat Content'
         MenuOpenWorkspace    = 'Open Project Directory'
         MenuCopyCell         = 'Copy Cell'
         MenuCopyId           = 'Copy Thread ID'
@@ -1304,8 +1305,8 @@ function Test-CodexHomeReady {
 function Assert-CodexHomeReady {
     if (Test-CodexHomeReady) { return }
 
-    $reason = if ($script:CodexHomeResolveError) { $script:CodexHomeResolveError } else { '尚未加载 Codex 历史记录目录。' }
-    throw ($reason + "`r`n`r`n请点击 ""增加聊天记录""，选择包含 state_5.sqlite 的 .codex 目录。")
+    $reason = if ($script:CodexHomeResolveError) { $script:CodexHomeResolveError } else { '尚未加载 Codex 账号。' }
+    throw ($reason + "`r`n`r`n请点击 ""加载codex账号""，选择包含 state_5.sqlite 的 .codex 文件夹。")
 }
 
 function Get-AppHelpText {
@@ -1324,16 +1325,16 @@ GitHub：$script:GitHubUrl
 
 $clipboardNote
 
-【历史记录目录】
+【加载codex账号】
 $(Get-CodexHomeHelpText)
 
 【cc-switch 节点目录】
 $(Get-CcSwitchHomeHelpText)
-- 【加载cc-switch.db配置】用于选择包含 cc-switch.db 的 cc-switch 配置目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点，用于切换账号和从终端启动。
+- 【账号配置文件】用于选择包含 cc-switch.db 的 cc-switch 配置目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点，用于切换账号和从终端启动。
 
 【配置文件】
 - 点击【软件设置】会打开软件根目录下的 codex-history-sync-config.json。
-- 第一次打开时会自动生成配置文件，并尽量写入已检测到的 Codex 记录目录、cc-switch 目录和账号列表。
+- 第一次打开时会自动生成配置文件，并尽量写入已检测到的 Codex 账号目录、cc-switch 目录和账号列表。
 - 保存配置文件后，软件会自动重新读取并刷新界面。
 - 配置文件只写本机路径和默认选择，不要写 API key、token 或 auth.json 内容。
 
@@ -1389,6 +1390,13 @@ function Add-HelpRichBlock {
 }
 
 function Show-AppHelp {
+    if ($script:HelpForm -and -not $script:HelpForm.IsDisposed) {
+        $script:HelpForm.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+        $script:HelpForm.Show()
+        $script:HelpForm.Activate()
+        return
+    }
+
     $clipboardNote = if (Copy-TextToClipboard "state_5.sqlite`r`ncc-switch.db") {
         "已复制 state_5.sqlite 和 cc-switch.db 到剪贴板，可直接粘贴到 Everything 搜索。"
     }
@@ -1403,6 +1411,9 @@ function Show-AppHelp {
     $helpForm.MinimumSize = New-Object System.Drawing.Size(720, 520)
     $helpForm.BackColor = [System.Drawing.Color]::White
     $helpForm.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
+    $helpForm.ShowInTaskbar = $false
+    $script:HelpForm = $helpForm
+    $helpForm.Add_FormClosed({ $script:HelpForm = $null })
 
     $box = New-Object System.Windows.Forms.RichTextBox
     $box.Location = New-Object System.Drawing.Point(18, 18)
@@ -1446,13 +1457,13 @@ function Show-AppHelp {
     Add-HelpRichLine -Box $box -Text 'cc-switch供应商：从终端启动 Codex 时使用的 cc-switch 节点，和上面的历史记录账号不是同一个概念。' -Font $strongFont -Color $slate -BackColor $highlight
     Add-HelpRichLine -Box $box -Text ''
 
-    Add-HelpRichLine -Box $box -Text '历史记录目录' -Font $sectionFont -Color $blue
+    Add-HelpRichLine -Box $box -Text '加载codex账号' -Font $sectionFont -Color $blue
     Add-HelpRichBlock -Box $box -Text (Get-CodexHomeHelpText) -Font $bodyFont -Color $slate
     Add-HelpRichLine -Box $box -Text ''
 
     Add-HelpRichLine -Box $box -Text 'cc-switch.db 配置' -Font $sectionFont -Color $blue
     Add-HelpRichBlock -Box $box -Text (Get-CcSwitchHomeHelpText) -Font $bodyFont -Color $slate
-    Add-HelpRichLine -Box $box -Text '点击【加载cc-switch.db配置】选择包含 cc-switch.db 的目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点。' -Font $strongFont -Color $green -BackColor $highlight
+    Add-HelpRichLine -Box $box -Text '点击【账号配置文件】选择包含 cc-switch.db 的目录；软件会从这里读取 Any Router、RightCode、OpenAI Official 等 Codex 节点。' -Font $strongFont -Color $green -BackColor $highlight
     Add-HelpRichLine -Box $box -Text ''
 
     Add-HelpRichLine -Box $box -Text '从终端启动' -Font $sectionFont -Color $blue
@@ -1469,7 +1480,12 @@ function Show-AppHelp {
 
     $box.SelectionStart = 0
     $box.ScrollToCaret()
-    [void]$helpForm.ShowDialog($script:Form)
+    if ($script:Form -and -not $script:Form.IsDisposed) {
+        $helpForm.Show($script:Form)
+    }
+    else {
+        $helpForm.Show()
+    }
 }
 
 function Set-CodexHomeFromSelection {
@@ -1484,7 +1500,7 @@ function Set-CodexHomeFromSelection {
     $script:StateDb = Join-Path $script:CodexHome 'state_5.sqlite'
     $script:CodexHomeResolveError = $null
 
-    Append-Log "已加载 Codex 历史记录目录：$script:CodexHome"
+    Append-Log "已加载 Codex 账号目录：$script:CodexHome"
     Refresh-Providers
     Refresh-CwdOptions
     Refresh-Threads
@@ -1510,7 +1526,7 @@ function Select-CodexHomeFolder {
     }
 
     $selected = Select-FolderPath `
-        -Title '请选择 Codex 记录目录；可选 .codex、sessions 或其子目录' `
+        -Title '加载codex账号：请选择包含 state_5.sqlite 的 .codex 文件夹' `
         -InitialDirectory $initialDirectory
     if (-not [string]::IsNullOrWhiteSpace($selected)) {
         Set-CodexHomeFromSelection $selected
@@ -1876,8 +1892,8 @@ function New-AppConfigObject {
     return [pscustomobject][ordered]@{
         _help                      = [pscustomobject][ordered]@{
             howToUse                  = '这个文件是本机配置。点击软件里的【软件设置】会打开它；保存后软件会自动刷新。JSON 不支持注释，所以说明文字放在 _help 里。'
-            codexHome                 = 'Codex 历史记录目录，必须包含 state_5.sqlite 和 sessions 文件夹。常见值：C:\Users\你的用户名\.codex。'
-            ccSwitchHome              = 'cc-switch 节点目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。'
+            codexHome                 = '加载codex账号时选择的 .codex 文件夹，必须包含 state_5.sqlite 和 sessions 文件夹。常见值：C:\Users\你的用户名\.codex。'
+            ccSwitchHome              = '账号配置文件目录，必须包含 cc-switch.db；也可以直接填 cc-switch.db 所在目录。'
             codexExe                  = 'codex.exe 的完整路径；如果 PATH 已经能找到 codex.exe，可以留空。'
             defaultSourceProvider     = 'Codex 历史记录里的 model_provider 桶，例如 openai、custom、rightcode。可参考 knownCodexHistoryProviders。'
             defaultTargetProvider     = '同步目标 model_provider 桶。'
@@ -2526,7 +2542,7 @@ function Get-CcSwitchProviderById {
     $safe = Quote-Sql $ProviderId
     $rows = Invoke-CcSwitchSqlJson "select id,name,settings_config from providers where app_type='codex' and id=$safe limit 1;"
     if ($rows.Count -eq 0) {
-        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【加载cc-switch.db配置】选择包含 cc-switch.db 的目录，然后刷新。"
+        throw "找不到 cc-switch Codex 节点 '$ProviderId'。请点击【账号配置文件】选择包含 cc-switch.db 的目录，然后刷新。"
     }
     return $rows[0]
 }
@@ -3282,7 +3298,7 @@ function Invoke-LaunchForProvider {
     $providerLabel = [string]$Combo.SelectedItem
     $providerId = Resolve-CcSwitchProviderId $providerLabel
     if ([string]::IsNullOrWhiteSpace($providerId)) {
-        throw '请先选择 cc-switch供应商。若下拉菜单为空，请点击【软件设置】填写 ccSwitchHome 后保存，或点击【加载cc-switch.db配置】选择包含 cc-switch.db 的目录。'
+        throw '请先选择 cc-switch供应商。若下拉菜单为空，请点击【软件设置】填写 ccSwitchHome 后保存，或点击【账号配置文件】选择包含 cc-switch.db 的目录。'
     }
     $loadCheckedRecord = $script:LoadCheckedRecordBox -and [bool]$script:LoadCheckedRecordBox.Checked
     $resumeSelection = if ($loadCheckedRecord) { Get-LaunchResumeSelection } else { $null }
@@ -3602,7 +3618,7 @@ function Refresh-Providers {
         if (-not (Test-CodexHomeReady)) {
             if ($script:SourceCombo) { $script:SourceCombo.Items.Clear() }
             if ($script:TargetCombo) { $script:TargetCombo.Items.Clear() }
-            if ($script:StatusLabel) { $script:StatusLabel.Text = '请先选择 Codex 历史记录目录' }
+            if ($script:StatusLabel) { $script:StatusLabel.Text = '请先加载 codex 账号' }
             if ($script:CodexHomeResolveError) { Append-Log $script:CodexHomeResolveError }
             return
         }
@@ -3671,7 +3687,7 @@ function Refresh-Threads {
         if (-not (Test-CodexHomeReady)) {
             $script:LastThreadTableCount = 0
             if ($script:Grid) { $script:Grid.Rows.Clear() }
-            if ($script:StatusLabel) { $script:StatusLabel.Text = '请先选择 Codex 历史记录目录' }
+            if ($script:StatusLabel) { $script:StatusLabel.Text = '请先加载 codex 账号' }
             return
         }
 
@@ -3881,10 +3897,10 @@ $syncGroup.Controls.Add($mirrorButton)
 
 $pathGroup = New-GroupBox '目录与配置' 872 70 420 86
 $script:Form.Controls.Add($pathGroup)
-$selectCodexHomeButton = New-Button '增加聊天记录' 14 24 118
-$openRecordFolderButton = New-Button '打开聊天目录' 142 24 118 'Soft'
+$selectCodexHomeButton = New-Button '加载codex账号' 14 24 118
+$openRecordFolderButton = New-Button '打开聊天内容' 142 24 118 'Soft'
 $openCodexFolderButton = New-Button 'codex目录' 270 24 112
-$selectCcSwitchHomeButton = New-Button '加载cc-switch.db配置' 14 54 190
+$selectCcSwitchHomeButton = New-Button '账号配置文件' 14 54 126
 $openConfigButton = New-Button '软件设置' 178 54 112 'Soft'
 $pathGroup.Controls.Add($selectCodexHomeButton)
 $pathGroup.Controls.Add($openRecordFolderButton)
@@ -4026,12 +4042,12 @@ $gridSyncAllItem.Add_Click({
         }
     })
 [void]$script:GridContextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-$gridOpenRecordDirItem = $script:GridContextMenu.Items.Add('打开聊天目录')
+$gridOpenRecordDirItem = $script:GridContextMenu.Items.Add('打开聊天内容')
 $gridOpenRecordDirItem.Add_Click({
         try {
             $directory = Resolve-SelectedRecordDirectory
             Start-Process -FilePath explorer.exe -ArgumentList $directory
-            Append-Log "已打开聊天记录目录：$directory"
+            Append-Log "已打开聊天内容目录：$directory"
         }
         catch {
             Show-GuiError $_
@@ -4242,7 +4258,7 @@ $openRecordFolderButton.Add_Click({
         try {
             $directory = Resolve-SelectedRecordDirectory
             Start-Process -FilePath explorer.exe -ArgumentList $directory
-            Append-Log "已打开聊天记录目录：$directory"
+            Append-Log "已打开聊天内容目录：$directory"
         }
         catch {
             Show-GuiError $_
@@ -4366,13 +4382,13 @@ Sync-AppConfigFileWithDetectedInfo -CreateIfMissing
 Start-AppConfigWatcher
 Append-Log '界面已加载。'
 if (Test-CodexHomeReady) {
-    Append-Log "Codex 记录目录：$CodexHome"
+    Append-Log "Codex 账号目录：$CodexHome"
 }
 else {
-    Append-Log ("尚未加载 Codex 记录目录。请点击 ""增加聊天记录""。" + "`r`n`r`n" + (Get-CodexHomeHelpText))
+    Append-Log ("尚未加载 Codex 账号。请点击 ""加载codex账号""。" + "`r`n`r`n" + (Get-CodexHomeHelpText))
 }
 if ([string]::IsNullOrWhiteSpace($script:CcSwitchDb)) {
-    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""加载cc-switch.db配置""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
+    Append-Log ("未找到 cc-switch.db：历史同步可用，切换账号启动功能不可用。请点击 ""账号配置文件""，选择包含 cc-switch.db 的目录。" + "`r`n`r`n" + (Get-CcSwitchHomeHelpText))
 }
 else {
     Append-Log "cc-switch 数据库：$script:CcSwitchDb"
