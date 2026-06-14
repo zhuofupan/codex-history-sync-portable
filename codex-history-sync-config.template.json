@@ -15,7 +15,7 @@
     "windowWidthByLanguage": "分别记录中文和英文界面下的窗口宽度，避免切换语言时互相覆盖。",
     "security": "不要在这里写 API key、token、auth.json、config.toml 或 state_5.sqlite 内容。"
   },
-  "version": "2026.06.14.02",
+  "version": "2026.06.14.03",
   "lastSavedAt": "",
   "codexHome": "",
   "ccSwitchHome": "",

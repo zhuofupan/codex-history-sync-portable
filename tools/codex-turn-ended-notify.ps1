@@ -326,10 +326,143 @@ function Test-UserTaskText {
 
 function New-RolloutContext {
     return [pscustomobject]@{
-        Provider     = ''
-        Cwd          = ''
-        ThreadId     = ''
-        LastUserTask = ''
+        Provider         = ''
+        Cwd              = ''
+        ThreadId         = ''
+        LastSeenUserTask = ''
+        PendingUserTask  = ''
+        PendingTurnId    = ''
+        LastUserTask     = ''
+        CompletedTurnId  = ''
+        CompletedAtUtc   = $null
+        HasCompletedTurn = $false
+    }
+}
+
+function Get-RolloutEventTimeUtc {
+    param([AllowNull()]$Object)
+
+    if ($null -eq $Object -or -not $Object.PSObject.Properties['timestamp']) { return $null }
+    $raw = $Object.PSObject.Properties['timestamp'].Value
+    if ($null -eq $raw) { return $null }
+    if ($raw -is [datetime]) { return $raw.ToUniversalTime() }
+
+    try {
+        $parsed = [DateTimeOffset]::MinValue
+        if ([DateTimeOffset]::TryParse([string]$raw, [ref]$parsed)) {
+            return $parsed.UtcDateTime
+        }
+    }
+    catch {
+        return $null
+    }
+    return $null
+}
+
+function Get-RolloutTurnId {
+    param([AllowNull()]$Object)
+
+    $value = Get-PropertyValue -Object $Object.payload -Names @('turn_id', 'turnId', 'id')
+    if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    return (Get-PropertyValue -Object $Object -Names @('turn_id', 'turnId', 'id'))
+}
+
+function Split-RolloutLines {
+    param([AllowNull()][string]$Text)
+
+    if ($null -eq $Text) { return @() }
+    $normalized = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+    return @($normalized -split "`n")
+}
+
+function Read-FileStreamBytes {
+    param(
+        [Parameter(Mandatory)]$Stream,
+        [Parameter(Mandatory)][byte[]]$Buffer
+    )
+
+    $offset = 0
+    while ($offset -lt $Buffer.Length) {
+        $count = $Stream.Read($Buffer, $offset, $Buffer.Length - $offset)
+        if ($count -le 0) { break }
+        $offset += $count
+    }
+    return $offset
+}
+
+function Get-RolloutHeadLinesFast {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [int]$MaxBytes = 131072,
+        [int]$MaxLines = 80
+    )
+
+    try {
+        $stream = [System.IO.File]::Open(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
+        )
+        try {
+            $readLength = [int][Math]::Min([int64]$MaxBytes, $stream.Length)
+            if ($readLength -le 0) { return @() }
+            $buffer = New-Object byte[] $readLength
+            $read = Read-FileStreamBytes -Stream $stream -Buffer $buffer
+            if ($read -le 0) { return @() }
+            return @(Split-RolloutLines ($utf8.GetString($buffer, 0, $read)) | Select-Object -First $MaxLines)
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+    catch {
+        return @()
+    }
+}
+
+function Get-RolloutTailLinesFast {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [int]$MaxBytes = 2097152,
+        [int]$MaxLines = 1600
+    )
+
+    try {
+        $stream = [System.IO.File]::Open(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
+        )
+        try {
+            $length = [int64]$stream.Length
+            if ($length -le 0) { return @() }
+            $start = [Math]::Max([int64]0, $length - [int64]$MaxBytes)
+            [void]$stream.Seek($start, [System.IO.SeekOrigin]::Begin)
+            $readLength = [int]($length - $start)
+            $buffer = New-Object byte[] $readLength
+            $read = Read-FileStreamBytes -Stream $stream -Buffer $buffer
+            if ($read -le 0) { return @() }
+
+            $lines = @(Split-RolloutLines ($utf8.GetString($buffer, 0, $read)))
+            if ($start -gt 0 -and $lines.Count -gt 1) {
+                $lines = @($lines | Select-Object -Skip 1)
+            }
+            elseif ($start -gt 0) {
+                return @()
+            }
+            if ($lines.Count -gt $MaxLines) {
+                return @($lines | Select-Object -Last $MaxLines)
+            }
+            return $lines
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+    catch {
+        return @()
     }
 }
 
@@ -362,6 +495,29 @@ function Update-RolloutContext {
     }
 
     $payloadType = [string]$Object.payload.type
+    if ([string]$Object.type -eq 'event_msg' -and $payloadType -eq 'task_started') {
+        $Context.PendingUserTask = ''
+        $Context.PendingTurnId = Get-RolloutTurnId $Object
+        return
+    }
+
+    if ([string]$Object.type -eq 'event_msg' -and $payloadType -eq 'task_complete') {
+        $Context.HasCompletedTurn = $true
+        $Context.CompletedTurnId = Get-RolloutTurnId $Object
+        $completedAt = Get-RolloutEventTimeUtc $Object
+        if ($null -ne $completedAt) {
+            $Context.CompletedAtUtc = $completedAt
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$Context.PendingUserTask)) {
+            $Context.LastUserTask = [string]$Context.PendingUserTask
+        }
+        elseif ([string]::IsNullOrWhiteSpace([string]$Context.LastUserTask) -and
+            -not [string]::IsNullOrWhiteSpace([string]$Context.LastSeenUserTask)) {
+            $Context.LastUserTask = [string]$Context.LastSeenUserTask
+        }
+        return
+    }
+
     $role = [string]$Object.payload.role
     $isUserMessage = (
         ([string]$Object.type -eq 'response_item' -and $payloadType -eq 'message' -and $role -eq 'user') -or
@@ -371,7 +527,8 @@ function Update-RolloutContext {
 
     $text = Get-RolloutMessageText $Object.payload
     if (Test-UserTaskText $text) {
-        $Context.LastUserTask = $text
+        $Context.LastSeenUserTask = $text
+        $Context.PendingUserTask = $text
     }
 }
 
@@ -380,10 +537,25 @@ function Get-RolloutContextFromFile {
 
     $context = New-RolloutContext
     try {
-        $lines = @()
-        $lines += @(Get-Content -LiteralPath $Path -TotalCount 80 -Encoding UTF8 -ErrorAction SilentlyContinue)
-        $lines += @(Get-Content -LiteralPath $Path -Tail 260 -Encoding UTF8 -ErrorAction SilentlyContinue)
-        foreach ($line in $lines) {
+        $headLines = @(Get-RolloutHeadLinesFast -Path $Path)
+        $tailLines = @(Get-RolloutTailLinesFast -Path $Path)
+        foreach ($line in $headLines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $obj = $line | ConvertFrom-Json
+            }
+            catch {
+                continue
+            }
+            if ([string]$obj.type -notin @('session_meta', 'turn_context')) { continue }
+            Update-RolloutContext -Context $context -Object $obj
+        }
+
+        $context.LastSeenUserTask = ''
+        $context.PendingUserTask = ''
+        $context.PendingTurnId = ''
+
+        foreach ($line in $tailLines) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
             try {
                 $obj = $line | ConvertFrom-Json
@@ -408,6 +580,13 @@ function Test-RolloutContextHasUsefulInfo {
         (-not [string]::IsNullOrWhiteSpace([string]$Context.Cwd)) -or
         (-not [string]::IsNullOrWhiteSpace([string]$Context.ThreadId)) -or
         (-not [string]::IsNullOrWhiteSpace([string]$Context.LastUserTask))
+}
+
+function Test-RolloutContextHasCompletedTurn {
+    param([AllowNull()]$Context)
+
+    if ($null -eq $Context) { return $false }
+    return [bool]$Context.HasCompletedTurn
 }
 
 function Get-NotifyMessageFromRolloutContext {
@@ -455,23 +634,54 @@ function Get-NotifyMessageFromLatestRollout {
         return ''
     }
 
+    $completedCandidates = New-Object System.Collections.Generic.List[object]
     $fallbackContext = $null
+    $bestCompletedAtUtc = $null
     try {
         $files = @(Get-ChildItem -LiteralPath $sessionsDir -Recurse -Filter 'rollout-*.jsonl' -File -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 6)
         Write-DiagnosticLog ("rollout fallback scanning files={0} home='{1}'." -f $files.Count, $resolvedCodexHome)
         foreach ($file in $files) {
-            $context = Get-RolloutContextFromFile ([string]$file.FullName)
-            if (-not $fallbackContext) { $fallbackContext = $context }
-            if (Test-RolloutContextHasUsefulInfo $context) {
-                Write-DiagnosticLog ("rollout fallback selected file='{0}' provider='{1}' cwdSet={2} taskSet={3}." -f
+            if ($null -ne $bestCompletedAtUtc -and $file.LastWriteTimeUtc -lt $bestCompletedAtUtc) {
+                Write-DiagnosticLog ("rollout fallback stopped early before file='{0}' bestCompletedAt='{1}'." -f
                     $file.Name,
-                    ([string]$context.Provider),
-                    (-not [string]::IsNullOrWhiteSpace([string]$context.Cwd)),
-                    (-not [string]::IsNullOrWhiteSpace([string]$context.LastUserTask)))
-                return (Get-NotifyMessageFromRolloutContext $context)
+                    ([DateTime]$bestCompletedAtUtc).ToString('o'))
+                break
             }
+
+            $context = Get-RolloutContextFromFile ([string]$file.FullName)
+            if (-not $fallbackContext -and (Test-RolloutContextHasUsefulInfo $context)) {
+                $fallbackContext = $context
+            }
+            if (Test-RolloutContextHasCompletedTurn $context) {
+                $completedCandidates.Add([pscustomobject]@{
+                        File           = $file
+                        Context        = $context
+                        CompletedAtUtc = $context.CompletedAtUtc
+                    })
+                if ($null -ne $context.CompletedAtUtc -and
+                    ($null -eq $bestCompletedAtUtc -or $context.CompletedAtUtc -gt $bestCompletedAtUtc)) {
+                    $bestCompletedAtUtc = $context.CompletedAtUtc
+                }
+            }
+        }
+
+        if ($completedCandidates.Count -gt 0) {
+            $selected = @($completedCandidates.ToArray() | Sort-Object `
+                    @{ Expression = { if ($_.CompletedAtUtc) { $_.CompletedAtUtc } else { [DateTime]::MinValue } }; Descending = $true }, `
+                    @{ Expression = { $_.File.LastWriteTimeUtc }; Descending = $true } |
+                Select-Object -First 1)[0]
+            $context = $selected.Context
+            $completedAtText = if ($context.CompletedAtUtc) { ([DateTime]$context.CompletedAtUtc).ToString('o') } else { '' }
+            Write-DiagnosticLog ("rollout fallback selected completed file='{0}' turn='{1}' completedAt='{2}' provider='{3}' cwdSet={4} taskSet={5}." -f
+                $selected.File.Name,
+                ([string]$context.CompletedTurnId),
+                $completedAtText,
+                ([string]$context.Provider),
+                (-not [string]::IsNullOrWhiteSpace([string]$context.Cwd)),
+                (-not [string]::IsNullOrWhiteSpace([string]$context.LastUserTask)))
+            return (Get-NotifyMessageFromRolloutContext $context)
         }
     }
     catch {
@@ -479,7 +689,7 @@ function Get-NotifyMessageFromLatestRollout {
         return ''
     }
 
-    Write-DiagnosticLog 'rollout fallback using fallback context.'
+    Write-DiagnosticLog 'rollout fallback found no completed turn; using fallback context.'
     return (Get-NotifyMessageFromRolloutContext $fallbackContext)
 }
 
@@ -510,12 +720,46 @@ function Test-NotifyMessageNeedsRolloutContext {
     return $false
 }
 
+function Test-RolloutCompletionSelection {
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ('codex-notify-selftest-' + [Guid]::NewGuid().ToString('N'))
+    $path = Join-Path $tempDir 'rollout-selftest.jsonl'
+    try {
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        $lines = @(
+            '{"timestamp":"2026-06-14T00:00:00Z","type":"session_meta","payload":{"model_provider":"custom","cwd":"D:\\work","id":"session-one"}}',
+            '{"timestamp":"2026-06-14T00:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"done-turn"}}',
+            '{"timestamp":"2026-06-14T00:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"finished task text"}}',
+            '{"timestamp":"2026-06-14T00:00:03Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"done-turn"}}',
+            '{"timestamp":"2026-06-14T00:00:04Z","type":"event_msg","payload":{"type":"task_started","turn_id":"pending-turn"}}',
+            '{"timestamp":"2026-06-14T00:00:05Z","type":"event_msg","payload":{"type":"user_message","message":"unfinished task text"}}'
+        )
+        [System.IO.File]::WriteAllLines($path, [string[]]$lines, $utf8)
+
+        $context = Get-RolloutContextFromFile $path
+        return (
+            [bool]$context.HasCompletedTurn -and
+            [string]$context.CompletedTurnId -eq 'done-turn' -and
+            [string]$context.LastUserTask -eq 'finished task text' -and
+            [string]$context.LastSeenUserTask -eq 'unfinished task text'
+        )
+    }
+    catch {
+        return $false
+    }
+    finally {
+        Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $forwardedArgs = @(Read-ForwardedArgumentFile $ArgFile)
 if ($forwardedArgs.Count -gt 0) {
     $RemainingArgs = @(Apply-ForwardedNotifyArguments $forwardedArgs) + @($RemainingArgs)
 }
 
 if ($SelfTest) {
+    if (-not (Test-RolloutCompletionSelection)) {
+        throw 'Notifier SelfTest failed: completed rollout context selection is incorrect.'
+    }
     Write-Output 'Notifier SelfTest OK.'
     return
 }
