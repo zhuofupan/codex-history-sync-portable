@@ -161,13 +161,25 @@ function Get-ContextForFile {
 
     if (-not $script:Contexts.ContainsKey($Path)) {
         $script:Contexts[$Path] = @{
-            Provider     = ''
-            Cwd          = ''
-            ThreadId     = ''
-            LastUserTask = ''
+            Provider          = ''
+            Cwd               = ''
+            ThreadId          = ''
+            LastUserTask      = ''
+            PendingUserTask   = ''
+            CompletedUserTask = ''
+            PendingTurnId     = ''
+            CompletedTurnId   = ''
         }
     }
     return $script:Contexts[$Path]
+}
+
+function Get-RolloutTurnId {
+    param([AllowNull()]$Object)
+
+    $value = Get-ObjectStringProperty $Object.payload @('turn_id', 'turnId', 'id')
+    if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    return (Get-ObjectStringProperty $Object @('turn_id', 'turnId', 'id'))
 }
 
 function Get-MessageText {
@@ -226,6 +238,24 @@ function Update-RolloutContext {
     }
 
     $payloadType = [string]$Object.payload.type
+    if ([string]$Object.type -eq 'event_msg' -and $payloadType -eq 'task_started') {
+        $context.PendingUserTask = ''
+        $context.CompletedUserTask = ''
+        $context.PendingTurnId = Get-RolloutTurnId $Object
+        return
+    }
+
+    if ([string]$Object.type -eq 'event_msg' -and $payloadType -eq 'task_complete') {
+        $context.CompletedTurnId = Get-RolloutTurnId $Object
+        if (-not [string]::IsNullOrWhiteSpace([string]$context.PendingUserTask)) {
+            $context.CompletedUserTask = [string]$context.PendingUserTask
+        }
+        else {
+            $context.CompletedUserTask = ''
+        }
+        return
+    }
+
     $role = [string]$Object.payload.role
     $isUserMessage = (
         ([string]$Object.type -eq 'response_item' -and $payloadType -eq 'message' -and $role -eq 'user') -or
@@ -236,6 +266,7 @@ function Update-RolloutContext {
     $text = Get-MessageText $Object.payload
     if (Test-UserTaskText $text) {
         $context.LastUserTask = $text
+        $context.PendingUserTask = $text
     }
 }
 
@@ -316,7 +347,7 @@ function Invoke-CompletionPopup {
     $threadLabel = if ($threadId.Length -gt 8) { $threadId.Substring(0, 8) } else { $threadId }
     if ([string]::IsNullOrWhiteSpace($threadLabel)) { $threadLabel = $currentThread }
 
-    $task = Shorten-Text ([string]$Context.LastUserTask) 52
+    $task = Shorten-Text ([string]$Context.CompletedUserTask) 52
     if ([string]::IsNullOrWhiteSpace($task)) { $task = $currentTaskDone }
 
     $message = "$accountLabel$provider | $cwdLabel`r`n$threadLabelPrefix$threadLabel`r`n$taskLabel$task"
